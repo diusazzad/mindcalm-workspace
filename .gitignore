@@ -16,12 +16,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Production build outputs
+# Production build outputs (allow client/dist for standalone deployments)
 dist/
 build/
 out/
 .next/
 .cache/
+!client/dist/**
 
 # OS & Editor files
 .DS_Store
