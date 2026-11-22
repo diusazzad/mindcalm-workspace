@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test server/tests/**/*.test.js",
+    "test": "node --test server/tests/api.test.js server/tests/smartspectra.test.js",
     "build": "cd client && npm install && npm run build"
   },
   "dependencies": {
