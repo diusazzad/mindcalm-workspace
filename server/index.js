@@ -1,10 +1,15 @@
 import "dotenv/config";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
 import apiRouter from "./routes/api.js";
 import { smartSpectraService } from "./services/smartspectra.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -14,6 +19,21 @@ app.use(express.json());
 
 // Mount API routes
 app.use(apiRouter);
+
+// Serve static frontend assets if built
+const clientDistPath = path.join(__dirname, "../client/dist");
+app.use(express.static(clientDistPath));
+
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/ws")) {
+    return next();
+  }
+  res.sendFile(path.join(clientDistPath, "index.html"), (err) => {
+    if (err) {
+      next();
+    }
+  });
+});
 
 // HTTP Server
 const server = http.createServer(app);
