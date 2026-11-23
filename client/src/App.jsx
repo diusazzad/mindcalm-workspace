@@ -1,11 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Navbar from './components/Navbar';
-import ConsentGateModal from './components/ConsentGateModal';
-import VitalsHUD from './components/VitalsHUD';
-import WaveformVisualizer from './components/WaveformVisualizer';
-import BoxBreathingPacer from './components/BoxBreathingPacer';
-import SoundscapeController from './components/SoundscapeController';
-import { ShieldCheck, Video, Play, Square, RefreshCw, Cpu, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import Navbar from "./components/Navbar";
+import ConsentGateModal from "./components/ConsentGateModal";
+import VitalsHUD from "./components/VitalsHUD";
+import CameraPreviewHUD from "./components/CameraPreviewHUD";
+import WaveformVisualizer from "./components/WaveformVisualizer";
+import BoxBreathingPacer from "./components/BoxBreathingPacer";
+import SoundscapeController from "./components/SoundscapeController";
+import {
+  ShieldCheck,
+  Video,
+  Play,
+  Square,
+  RefreshCw,
+  Cpu,
+  Activity,
+} from "lucide-react";
 
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -13,7 +22,7 @@ export default function App() {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isConsentGranted, setIsConsentGranted] = useState(false);
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
 
   // Vitals State
   const [vitals, setVitals] = useState({
@@ -22,9 +31,10 @@ export default function App() {
     hrv_rmssd_ms: 45.2,
     respiration_rpm: 14.5,
     blink_rate_cpm: 18,
-    cognitive_state: 'CALM_FLOW',
+    blinks_total: 0,
+    cognitive_state: "CALM_FLOW",
     eye_strain_risk: false,
-    is_talking: false
+    is_talking: false,
   });
 
   // Waveform Buffers (120 points)
@@ -35,15 +45,16 @@ export default function App() {
 
   // Check consent status on mount
   useEffect(() => {
-    fetch('/api/consent')
+    fetch("/api/consent")
       .then((res) => res.json())
       .then((data) => {
-        setIsConsentGranted(data.consent_granted);
-        if (!data.consent_granted) {
+        const granted = !!(data.consent_granted ?? data.consentGranted);
+        setIsConsentGranted(granted);
+        if (!granted) {
           setIsConsentModalOpen(true);
         }
       })
-      .catch((err) => console.warn('Consent fetch error:', err));
+      .catch((err) => console.warn("Consent fetch error:", err));
   }, []);
 
   // Session duration timer
@@ -61,7 +72,7 @@ export default function App() {
 
   // Connect to 30Hz WebSocket
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/vitals`;
     const socket = new WebSocket(wsUrl);
     wsRef.current = socket;
@@ -77,32 +88,45 @@ export default function App() {
     socket.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'vitals' && msg.data) {
+        if (msg.type === "vitals" && msg.data) {
           const d = msg.data;
+          const v = d.vitals || {};
+
+          // Extract waveform samples (support both camelCase and snake_case)
+          const ppgVal = d.ppgWave ?? d.ppg_wave;
+          const respVal = d.respWave ?? d.resp_wave;
+
+          if (typeof ppgVal === "number") {
+            setPpgHistory((prev) => [...prev.slice(-119), ppgVal]);
+          }
+          if (typeof respVal === "number") {
+            setRespHistory((prev) => [...prev.slice(-119), respVal]);
+          }
+
+          // Update vitals (support both nested vitals object and direct keys)
           setVitals((prev) => ({
             ...prev,
-            pulse_bpm: d.pulse_bpm ?? prev.pulse_bpm,
-            pulse_confidence: d.pulse_confidence ?? prev.pulse_confidence,
-            hrv_rmssd_ms: d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
-            respiration_rpm: d.respiration_rpm ?? prev.respiration_rpm,
-            blink_rate_cpm: d.blink_rate_cpm ?? prev.blink_rate_cpm,
-            cognitive_state: d.cognitive_state ?? prev.cognitive_state,
-            eye_strain_risk: d.eye_strain_risk ?? prev.eye_strain_risk,
-            is_talking: d.is_talking ?? prev.is_talking
+            pulse_bpm: v.pulseBpm ?? d.pulse_bpm ?? prev.pulse_bpm,
+            pulse_confidence:
+              v.pulseConfidence ?? d.pulse_confidence ?? prev.pulse_confidence,
+            hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
+            respiration_rpm:
+              v.respirationRpm ?? d.respiration_rpm ?? prev.respiration_rpm,
+            blink_rate_cpm:
+              v.blinkRatePerMin ?? d.blink_rate_cpm ?? prev.blink_rate_cpm,
+            blinks_total:
+              v.blinksTotal ?? d.blinks_total ?? prev.blinks_total ?? 0,
+            cognitive_state:
+              v.cognitiveState ?? d.cognitive_state ?? prev.cognitive_state,
+            eye_strain_risk:
+              v.eyeStrainRisk ?? d.eye_strain_risk ?? prev.eye_strain_risk,
+            is_talking: v.isTalking ?? d.is_talking ?? prev.is_talking,
           }));
-
-          // Append to waveform history
-          if (typeof d.ppg_wave === 'number') {
-            setPpgHistory((prev) => [...prev.slice(-119), d.ppg_wave]);
-          }
-          if (typeof d.resp_wave === 'number') {
-            setRespHistory((prev) => [...prev.slice(-119), d.resp_wave]);
-          }
-        } else if (msg.type === 'session_state') {
-          setIsSessionActive(msg.is_running);
+        } else if (msg.type === "session_state") {
+          setIsSessionActive(!!msg.is_running);
         }
       } catch (e) {
-        console.error('WS parse error:', e);
+        console.error("WS parse error:", e);
       }
     };
 
@@ -113,28 +137,28 @@ export default function App() {
 
   const handleGrantConsent = async () => {
     try {
-      await fetch('/api/consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ granted: true })
+      await fetch("/api/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ granted: true }),
       });
       setIsConsentGranted(true);
     } catch (e) {
-      console.error('Grant consent failed:', e);
+      console.error("Grant consent failed:", e);
     }
   };
 
   const handleRevokeConsent = async () => {
     try {
-      await fetch('/api/consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ granted: false })
+      await fetch("/api/consent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ granted: false }),
       });
       setIsConsentGranted(false);
       setIsSessionActive(false);
     } catch (e) {
-      console.error('Revoke consent failed:', e);
+      console.error("Revoke consent failed:", e);
     }
   };
 
@@ -144,33 +168,33 @@ export default function App() {
       return;
     }
     try {
-      const res = await fetch('/api/session/start', { method: 'POST' });
+      const res = await fetch("/api/session/start", { method: "POST" });
       if (res.ok) {
         setIsSessionActive(true);
       }
     } catch (e) {
-      console.error('Start session error:', e);
+      console.error("Start session error:", e);
     }
   };
 
   const handleStopSession = async () => {
     try {
-      const res = await fetch('/api/session/stop', { method: 'POST' });
+      const res = await fetch("/api/session/stop", { method: "POST" });
       if (res.ok) {
         setIsSessionActive(false);
       }
     } catch (e) {
-      console.error('Stop session error:', e);
+      console.error("Stop session error:", e);
     }
   };
 
   const handleResetSession = async () => {
     try {
-      await fetch('/api/session/reset', { method: 'POST' });
+      await fetch("/api/session/reset", { method: "POST" });
       setPpgHistory([]);
       setRespHistory([]);
     } catch (e) {
-      console.error('Reset session error:', e);
+      console.error("Reset session error:", e);
     }
   };
 
@@ -191,11 +215,13 @@ export default function App() {
         {/* Session Control Strip */}
         <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-3.5">
-            <div className={`p-2.5 rounded-xl border flex items-center justify-center ${
-              isSessionActive
-                ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-400 animate-pulse'
-                : 'bg-slate-800 border-slate-700 text-slate-400'
-            }`}>
+            <div
+              className={`p-2.5 rounded-xl border flex items-center justify-center ${
+                isSessionActive
+                  ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-400 animate-pulse"
+                  : "bg-slate-800 border-slate-700 text-slate-400"
+              }`}
+            >
               <Activity className="h-5 w-5" />
             </div>
             <div>
@@ -206,7 +232,8 @@ export default function App() {
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Real-time optical biofeedback & autonomic pacing for developers and screen professionals.
+                Real-time optical biofeedback & autonomic pacing for developers
+                and screen professionals.
               </p>
             </div>
           </div>
@@ -243,12 +270,22 @@ export default function App() {
         {/* Real-time Physiological Vitals Cards */}
         <VitalsHUD vitals={vitals} isSessionActive={isSessionActive} />
 
-        {/* Center Waveforms (Dual 30Hz Canvases) */}
-        <WaveformVisualizer
-          ppgHistory={ppgHistory}
-          respHistory={respHistory}
-          isConnected={isConnected}
-        />
+        {/* Center Grid: SmartSpectra Optical Viewport (Left) & Dual-Waveform Visualizer (Right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          <div className="lg:col-span-4 flex flex-col">
+            <CameraPreviewHUD
+              isConsentGranted={isConsentGranted}
+              isSessionActive={isSessionActive}
+            />
+          </div>
+          <div className="lg:col-span-8 flex flex-col">
+            <WaveformVisualizer
+              ppgHistory={ppgHistory}
+              respHistory={respHistory}
+              isConnected={isConnected}
+            />
+          </div>
+        </div>
 
         {/* Lower Ergonomic Grid: Box Breathing Pacer (Left) & Adaptive Soundscape (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -256,7 +293,10 @@ export default function App() {
             <BoxBreathingPacer userRespirationRate={vitals.respiration_rpm} />
           </div>
           <div className="lg:col-span-5 flex flex-col">
-            <SoundscapeController isMuted={isMuted} cognitiveState={vitals.cognitive_state} />
+            <SoundscapeController
+              isMuted={isMuted}
+              cognitiveState={vitals.cognitive_state}
+            />
           </div>
         </div>
 
@@ -264,9 +304,14 @@ export default function App() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-3">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-            <span>Presage SmartSpectra SDK Challenge 2026 • 100% Ephemeral in-memory optical processing</span>
+            <span>
+              Presage SmartSpectra SDK Challenge 2026 • 100% Ephemeral in-memory
+              optical processing
+            </span>
           </div>
-          <span className="font-mono text-slate-400">Strictly non-clinical ergonomic biofeedback</span>
+          <span className="font-mono text-slate-400">
+            Strictly non-clinical ergonomic biofeedback
+          </span>
         </div>
       </main>
 
