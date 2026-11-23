@@ -16,12 +16,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Production build outputs (allow client/dist for standalone deployments)
+# Production build outputs
 dist/
 build/
 out/
 .next/
 .cache/
+
+# Unignore client/dist completely so static assets are deployed to Render
+!client/dist/
 !client/dist/**
 
 # OS & Editor files
