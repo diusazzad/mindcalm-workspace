@@ -9,6 +9,7 @@ import {
   Sparkles,
   AlertTriangle,
   CheckCircle,
+  Scan,
 } from "lucide-react";
 import { OpticalEngine } from "../services/opticalEngine";
 
@@ -25,6 +26,9 @@ export default function CameraPreviewHUD({
   // Optical HUD Visual Feedback States
   const [opticalStats, setOpticalStats] = useState({
     faceDetected: false,
+    isAligned: false,
+    isCalibrated: false,
+    calibrationProgress: 0,
     isBlink: false,
     justBlinked: false,
     totalBlinks: 0,
@@ -55,6 +59,9 @@ export default function CameraPreviewHUD({
       engineRef.current.reset();
       setOpticalStats({
         faceDetected: false,
+        isAligned: false,
+        isCalibrated: false,
+        calibrationProgress: 0,
         isBlink: false,
         justBlinked: false,
         totalBlinks: 0,
@@ -93,7 +100,7 @@ export default function CameraPreviewHUD({
               setTimeout(() => setBlinkFlash(false), 220);
             }
 
-            const respPhase = !telemetry.faceDetected
+            const respPhase = !telemetry.isAligned
               ? "Standby"
               : telemetry.respWave > 0.15
                 ? "Inhale (Rising)"
@@ -103,15 +110,18 @@ export default function CameraPreviewHUD({
 
             setOpticalStats({
               faceDetected: telemetry.faceDetected,
+              isAligned: telemetry.isAligned,
+              isCalibrated: telemetry.isCalibrated,
+              calibrationProgress: telemetry.calibrationProgress,
               isBlink: telemetry.isBlink,
               justBlinked: telemetry.justBlinked,
               totalBlinks: telemetry.totalBlinks,
-              blinkRateCpm: telemetry.faceDetected ? telemetry.blinkRateCpm : 0,
-              pulseBpm: telemetry.faceDetected ? telemetry.pulseBpm : 0,
-              respirationRpm: telemetry.faceDetected
+              blinkRateCpm: telemetry.isAligned ? telemetry.blinkRateCpm : 0,
+              pulseBpm: telemetry.isAligned ? telemetry.pulseBpm : 0,
+              respirationRpm: telemetry.isAligned
                 ? telemetry.respirationRpm
                 : 0,
-              isTalking: telemetry.faceDetected && telemetry.isTalking,
+              isTalking: telemetry.isAligned && telemetry.isTalking,
               respPhase,
             });
 
@@ -205,20 +215,24 @@ export default function CameraPreviewHUD({
           {stream && (
             <span
               className={`flex items-center space-x-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                opticalStats.faceDetected
+                opticalStats.isAligned
                   ? "text-emerald-400 bg-emerald-950/60 border-emerald-800/60"
                   : "text-rose-400 bg-rose-950/70 border-rose-700/60 animate-pulse"
               }`}
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
-                  opticalStats.faceDetected
+                  opticalStats.isAligned
                     ? "bg-emerald-400 animate-pulse"
                     : "bg-rose-400"
                 }`}
               />
               <span>
-                {opticalStats.faceDetected ? "30 FPS LOCAL" : "ALIGNMENT ALERT"}
+                {opticalStats.isAligned
+                  ? opticalStats.isCalibrated
+                    ? "30 FPS CALIBRATED"
+                    : `CALIBRATING ${opticalStats.calibrationProgress}%`
+                  : "ALIGNMENT ALERT"}
               </span>
             </span>
           )}
@@ -259,97 +273,144 @@ export default function CameraPreviewHUD({
             {/* Top Status Bar */}
             <div
               className={`flex justify-between items-center text-[10px] font-mono backdrop-blur-sm px-2.5 py-1 rounded-lg border shadow-lg transition-colors duration-200 ${
-                opticalStats.faceDetected
-                  ? "bg-slate-950/80 border-cyan-900/60"
+                opticalStats.isAligned
+                  ? opticalStats.isCalibrated
+                    ? "bg-slate-950/80 border-emerald-600/60"
+                    : "bg-slate-950/80 border-cyan-500/60"
                   : "bg-rose-950/80 border-rose-500/80 shadow-rose-950/50"
               }`}
             >
               <div className="flex items-center space-x-1.5">
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    opticalStats.faceDetected
+                    opticalStats.isAligned
                       ? "bg-emerald-400 animate-ping"
                       : "bg-rose-400 animate-bounce"
                   }`}
                 />
                 <span
                   className={`font-semibold ${
-                    opticalStats.faceDetected
+                    opticalStats.isAligned
                       ? "text-emerald-300 font-bold"
                       : "text-rose-300 font-bold"
                   }`}
                 >
-                  {opticalStats.faceDetected
-                    ? "FACE ALIGNED IN CIRCLE (30Hz)"
-                    : "ALERT: FACE NOT IN CIRCLE"}
+                  {opticalStats.isAligned
+                    ? opticalStats.isCalibrated
+                      ? "FACE & NECK LOCKED • READY TO BREATHE"
+                      : `SCANNING BIOMETRIC PROFILE (${opticalStats.calibrationProgress}%)`
+                    : "ALERT: FACE & NECK NOT IN GUIDE"}
                 </span>
               </div>
               <span className="text-slate-400 font-mono">
-                {opticalStats.faceDetected
+                {opticalStats.isAligned
                   ? "rPPG OPTICAL ACTIVE"
-                  : "KEEP FACE INSIDE GUIDE"}
+                  : "ALIGN HEAD & NECK"}
               </span>
             </div>
 
-            {/* Central Anatomical Target Circle Guide */}
+            {/* Central Anatomical Target Silhouette (Head + Neck Guide) */}
             <div className="relative w-full h-full my-auto flex items-center justify-center">
-              {opticalStats.faceDetected ? (
-                /* Perfectly Aligned Green Guide Circle */
-                <div
-                  className={`w-40 h-52 border-2 border-emerald-400/90 rounded-full transition-all duration-200 flex flex-col items-center justify-between py-2.5 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
-                    blinkFlash
-                      ? "border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)]"
-                      : ""
-                  }`}
-                >
-                  {/* 1. Forehead rPPG Region */}
-                  <div className="w-20 h-6 border border-emerald-400 bg-emerald-950/40 rounded flex items-center justify-center text-[8px] font-mono text-emerald-300 font-bold">
-                    <span className="animate-pulse">FOREHEAD rPPG</span>
-                  </div>
+              {opticalStats.isAligned ? (
+                /* Aligned Head + Neck Silhouette Guide */
+                <div className="relative flex flex-col items-center justify-center">
+                  {/* Scanning Laser Beam (Visible during calibration) */}
+                  {!opticalStats.isCalibrated && (
+                    <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse shadow-[0_0_12px_#06b6d4] z-20" />
+                  )}
 
-                  {/* 2. Eye Zone Reticle with Real Blink Flash Indicator */}
-                  <div className="w-32 flex justify-between items-center px-1">
-                    <div
-                      className={`w-11 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
-                        blinkFlash || opticalStats.isBlink
-                          ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_10px_#f59e0b]"
-                          : "border-cyan-400/70 bg-cyan-950/30 text-cyan-300"
-                      }`}
-                    >
-                      {blinkFlash || opticalStats.isBlink ? "BLINK" : "EYE-L"}
-                    </div>
-                    <div
-                      className={`w-11 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
-                        blinkFlash || opticalStats.isBlink
-                          ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_10px_#f59e0b]"
-                          : "border-cyan-400/70 bg-cyan-950/30 text-cyan-300"
-                      }`}
-                    >
-                      {blinkFlash || opticalStats.isBlink ? "BLINK" : "EYE-R"}
-                    </div>
-                  </div>
-
-                  {/* 3. Mouth / Speech Motion Reticle */}
+                  {/* 1. Head Oval */}
                   <div
-                    className={`w-16 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
-                      opticalStats.isTalking
-                        ? "border-indigo-400 bg-indigo-950/70 text-indigo-200 font-bold shadow-[0_0_10px_#818cf8]"
-                        : "border-slate-500/50 bg-slate-900/40 text-slate-300"
+                    className={`w-38 h-48 sm:w-40 sm:h-50 border-2 rounded-full transition-all duration-200 flex flex-col items-center justify-between py-2 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
+                      !opticalStats.isCalibrated
+                        ? "border-cyan-400/80 border-dashed"
+                        : blinkFlash
+                          ? "border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)]"
+                          : "border-emerald-400"
                     }`}
                   >
-                    {opticalStats.isTalking ? "MOUTH OPEN" : "MOUTH REST"}
+                    {/* Forehead rPPG Region */}
+                    <div className="w-20 h-6 border border-emerald-400 bg-emerald-950/40 rounded flex items-center justify-center text-[8px] font-mono text-emerald-300 font-bold">
+                      <span className="animate-pulse">FOREHEAD rPPG</span>
+                    </div>
+
+                    {/* Bilateral Eye Zone Reticle */}
+                    <div className="w-32 flex justify-between items-center px-1">
+                      <div
+                        className={`w-11 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
+                          blinkFlash || opticalStats.isBlink
+                            ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_10px_#f59e0b]"
+                            : "border-cyan-400/70 bg-cyan-950/30 text-cyan-300"
+                        }`}
+                      >
+                        {blinkFlash || opticalStats.isBlink ? "BLINK" : "EYE-L"}
+                      </div>
+                      <div
+                        className={`w-11 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
+                          blinkFlash || opticalStats.isBlink
+                            ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_10px_#f59e0b]"
+                            : "border-cyan-400/70 bg-cyan-950/30 text-cyan-300"
+                        }`}
+                      >
+                        {blinkFlash || opticalStats.isBlink ? "BLINK" : "EYE-R"}
+                      </div>
+                    </div>
+
+                    {/* Mouth / Speech Motion Reticle */}
+                    <div
+                      className={`w-16 h-5 border rounded flex items-center justify-center text-[7px] font-mono transition-all duration-150 ${
+                        opticalStats.isTalking
+                          ? "border-indigo-400 bg-indigo-950/70 text-indigo-200 font-bold shadow-[0_0_10px_#818cf8]"
+                          : "border-slate-500/50 bg-slate-900/40 text-slate-300"
+                      }`}
+                    >
+                      {opticalStats.isTalking ? "MOUTH OPEN" : "MOUTH REST"}
+                    </div>
                   </div>
+
+                  {/* 2. Neck & Clavicle Guide (ঘাড় গাইড) */}
+                  <div className="w-20 h-10 -mt-2 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center">
+                    <span className="text-[7px] font-mono text-emerald-300 font-semibold tracking-wider">
+                      NECK / THORACIC
+                    </span>
+                  </div>
+
+                  {/* Calibration Prompt Badge */}
+                  {!opticalStats.isCalibrated ? (
+                    <div className="absolute -bottom-6 bg-cyan-950/90 text-cyan-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-cyan-500/50 flex items-center space-x-1 shadow-lg">
+                      <Scan className="h-3 w-3 animate-spin text-cyan-400" />
+                      <span>
+                        FITTING CUSTOM MORPHOLOGY:{" "}
+                        {opticalStats.calibrationProgress}%
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="absolute -bottom-6 bg-emerald-950/90 text-emerald-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-emerald-500/50 flex items-center space-x-1 shadow-lg">
+                      <CheckCircle className="h-3 w-3 text-emerald-400" />
+                      <span>READY • BREATHE WITH PACER</span>
+                    </div>
+                  )}
                 </div>
               ) : (
-                /* Red Alert Circle: Out of Guide Warning */
-                <div className="w-44 h-56 border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 animate-pulse shadow-[0_0_30px_rgba(244,63,94,0.6)]">
-                  <AlertTriangle className="h-9 w-9 text-rose-400 mb-1.5 animate-bounce" />
-                  <span className="text-[11px] text-rose-300 font-mono font-extrabold text-center tracking-wide">
-                    ALIGNMENT ALERT
-                  </span>
-                  <span className="text-[9px] text-rose-200 font-mono text-center mt-1 bg-rose-950/90 px-2 py-0.5 rounded border border-rose-500/60 font-semibold">
-                    KEEP FACE INSIDE CIRCLE
-                  </span>
+                /* Red Alert Silhouette Guide: Head & Neck Out of Bounds */
+                <div className="relative flex flex-col items-center justify-center animate-pulse">
+                  {/* Head Oval Out of Guide */}
+                  <div className="w-44 h-54 border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(244,63,94,0.6)]">
+                    <AlertTriangle className="h-9 w-9 text-rose-400 mb-1.5 animate-bounce" />
+                    <span className="text-[11px] text-rose-300 font-mono font-extrabold text-center tracking-wide">
+                      ALIGNMENT ALERT
+                    </span>
+                    <span className="text-[9px] text-rose-200 font-mono text-center mt-1 bg-rose-950/90 px-2 py-0.5 rounded border border-rose-500/60 font-semibold">
+                      FIT HEAD & NECK IN GUIDE
+                    </span>
+                  </div>
+
+                  {/* Neck Guide Box */}
+                  <div className="w-22 h-10 -mt-2 border-x-2 border-b-2 border-dashed border-rose-500/70 bg-rose-950/20 rounded-b-xl flex items-center justify-center">
+                    <span className="text-[7px] font-mono text-rose-300">
+                      NECK BASE
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -368,7 +429,7 @@ export default function CameraPreviewHUD({
                 <Eye className="h-3 w-3 text-amber-400" />
                 <span>
                   Blinks: {opticalStats.totalBlinks}{" "}
-                  {opticalStats.faceDetected
+                  {opticalStats.isAligned
                     ? `(${opticalStats.blinkRateCpm}/m)`
                     : "(Paused)"}
                 </span>
@@ -381,7 +442,7 @@ export default function CameraPreviewHUD({
                 <Activity className="h-3 w-3 text-cyan-400" />
                 <span>
                   rPPG:{" "}
-                  {opticalStats.faceDetected && opticalStats.pulseBpm
+                  {opticalStats.isAligned && opticalStats.pulseBpm
                     ? `${opticalStats.pulseBpm} BPM`
                     : "0 BPM"}
                 </span>
@@ -414,7 +475,7 @@ export default function CameraPreviewHUD({
           <span>Zero Video Recording Guarantee</span>
         </span>
         <span className="text-cyan-400 font-mono">
-          rPPG Photoplethysmography
+          Adaptive Morphology rPPG
         </span>
       </div>
     </div>

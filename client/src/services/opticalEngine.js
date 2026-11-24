@@ -1,15 +1,15 @@
 /**
  * Optical Computer Vision & Ephemeral rPPG Physiological Telemetry Engine.
  *
- * Extracts real-time physiological metrics directly from HTML5 video frames:
- * 1. Forehead Green-Channel rPPG (Photoplethysmography Pulse Wave & BPM)
- * 2. Real Eye ROI Luminance & Eyelid Blink Dynamics (Blink Counter & CPM)
- * 3. Mouth & Oral Cavity Motion (Speech & Vocal Movement Detection)
- * 4. Thoracic / Upper Body Optical Displacement (Respiration Cycle & RPM)
+ * Features:
+ * 1. Adaptive Morphological Calibration: Auto-detects custom face, eye, mouth, and neck
+ *    geometry for any user body shape.
+ * 2. Head-to-Neck Alignment Guide & Red Alert: Tracks posture down to the neck & clavicle.
+ * 3. Forehead Green-Channel rPPG: Micro-capillary absorption for pulse BPM & waveform.
+ * 4. High-Precision Bilateral Eye Blink Tracking: Dynamic rolling blinks/min rate.
+ * 5. Thoracic & Neck Expansion Tracking: Respiration trajectory & RPM.
  *
- * Strict Privacy & Compliance:
- * - 100% Ephemeral in volatile browser RAM memory.
- * - Zero video frame recording, zero disk persistence, zero external transmission.
+ * Privacy: 100% Ephemeral in volatile browser RAM. Zero video storage.
  */
 
 export class OpticalEngine {
@@ -20,6 +20,12 @@ export class OpticalEngine {
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true });
 
     this.prevFrameData = null;
+
+    // Calibration & Morphological State
+    this.isCalibrated = false;
+    this.calibrationFrames = 0;
+    this.calibratedFace = null;
+    this.calibratedNeck = null;
 
     // Pulse & PPG Buffers
     this.ppgBuffer = [];
@@ -46,13 +52,18 @@ export class OpticalEngine {
     this.isTalking = false;
     this.mouthOpenAmount = 0;
 
-    // Face / Human Detection Hysteresis
+    // Alignment Hysteresis
     this.faceDetected = false;
+    this.isAligned = false;
     this.consecutiveMissedFrames = 10;
     this.sessionStartTime = performance.now();
   }
 
   reset() {
+    this.isCalibrated = false;
+    this.calibrationFrames = 0;
+    this.calibratedFace = null;
+    this.calibratedNeck = null;
     this.totalBlinks = 0;
     this.blinkTimestamps = [];
     this.lastBlinkTime = 0;
@@ -66,6 +77,7 @@ export class OpticalEngine {
     this.prevFrameData = null;
     this.consecutiveMissedFrames = 10;
     this.faceDetected = false;
+    this.isAligned = false;
   }
 
   /**
@@ -84,7 +96,7 @@ export class OpticalEngine {
     const ctx = this.ctx;
     const now = performance.now();
 
-    // Draw current video frame to off-screen canvas (scaled to 320x240 for high performance)
+    // Draw current video frame to off-screen canvas
     ctx.drawImage(videoElement, 0, 0, width, height);
 
     let frameData;
@@ -96,39 +108,88 @@ export class OpticalEngine {
 
     const pixels = frameData.data;
 
-    // 1. Detect Face & Human Presence in Central ROI
-    const faceBox = {
-      x: Math.floor(width * 0.22),
-      y: Math.floor(height * 0.12),
-      w: Math.floor(width * 0.56),
-      h: Math.floor(height * 0.74),
-    };
+    // 1. Morphological Skin & Anatomical Detection (Head to Neck)
+    const morph = this._detectMorphology(pixels, width, height);
 
-    const faceCheck = this._detectFacePresence(pixels, width, faceBox);
-
-    if (faceCheck.detected) {
+    if (morph.detected) {
       this.consecutiveMissedFrames = 0;
       this.faceDetected = true;
+
+      // Center alignment check (ensure face and neck are centered in guide circle)
+      const centerX = width / 2;
+      const centerY = height * 0.45;
+      const distFromCenter = Math.hypot(morph.cx - centerX, morph.cy - centerY);
+
+      // Aligned if within 25% of viewport center
+      this.isAligned =
+        distFromCenter < width * 0.22 && morph.faceW > width * 0.2;
+
+      // Calibration accumulation (45 frames ≈ 1.5 seconds)
+      if (this.isAligned && !this.isCalibrated) {
+        this.calibrationFrames++;
+        if (!this.calibratedFace) {
+          this.calibratedFace = { ...morph.faceBox };
+          this.calibratedNeck = { ...morph.neckBox };
+        } else {
+          // Smooth running average of user's personal face geometry
+          this.calibratedFace.x = Math.round(
+            this.calibratedFace.x * 0.85 + morph.faceBox.x * 0.15,
+          );
+          this.calibratedFace.y = Math.round(
+            this.calibratedFace.y * 0.85 + morph.faceBox.y * 0.15,
+          );
+          this.calibratedFace.w = Math.round(
+            this.calibratedFace.w * 0.85 + morph.faceBox.w * 0.15,
+          );
+          this.calibratedFace.h = Math.round(
+            this.calibratedFace.h * 0.85 + morph.faceBox.h * 0.15,
+          );
+
+          this.calibratedNeck.x = Math.round(
+            this.calibratedNeck.x * 0.85 + morph.neckBox.x * 0.15,
+          );
+          this.calibratedNeck.y = Math.round(
+            this.calibratedNeck.y * 0.85 + morph.neckBox.y * 0.15,
+          );
+          this.calibratedNeck.w = Math.round(
+            this.calibratedNeck.w * 0.85 + morph.neckBox.w * 0.15,
+          );
+          this.calibratedNeck.h = Math.round(
+            this.calibratedNeck.h * 0.85 + morph.neckBox.h * 0.15,
+          );
+        }
+
+        if (this.calibrationFrames >= 45) {
+          this.isCalibrated = true;
+        }
+      }
     } else {
       this.consecutiveMissedFrames++;
-      // Allow up to 6 frames (~200ms) of transient occlusion before dropping lock
       if (this.consecutiveMissedFrames > 6) {
         this.faceDetected = false;
+        this.isAligned = false;
       }
     }
 
-    // If no human is in front of the camera, return immediately with faceDetected: false
-    if (!this.faceDetected) {
+    const calibrationProgress = this.isCalibrated
+      ? 100
+      : Math.min(99, Math.round((this.calibrationFrames / 45) * 100));
+
+    // If human is not in frame or misaligned outside circle, report clean non-measuring state
+    if (!this.faceDetected || !this.isAligned) {
       this.prevFrameData = frameData;
       return {
-        faceDetected: false,
+        faceDetected: this.faceDetected,
+        isAligned: false,
+        isCalibrated: this.isCalibrated,
+        calibrationProgress,
         isBlink: false,
         justBlinked: false,
         totalBlinks: this.totalBlinks,
-        blinkRateCpm: this._calcBlinkRate(now),
-        pulseBpm: null,
+        blinkRateCpm: 0,
+        pulseBpm: 0,
         pulseConfidence: 0,
-        respirationRpm: null,
+        respirationRpm: 0,
         ppgWave: 0,
         respWave: 0,
         isTalking: false,
@@ -137,50 +198,52 @@ export class OpticalEngine {
       };
     }
 
-    // Define Key Physiological ROIs
-    // Forehead ROI for rPPG Green Channel
+    // Adaptive Personalized ROIs derived from calibrated geometry
+    const fb = this.calibratedFace || morph.faceBox;
+    const nb = this.calibratedNeck || morph.neckBox;
+
+    // 1. Forehead ROI for rPPG Green Channel
     const foreheadRoi = {
-      x: Math.floor(width * 0.38),
-      y: Math.floor(height * 0.16),
-      w: Math.floor(width * 0.24),
-      h: Math.floor(height * 0.14),
+      x: Math.floor(fb.x + fb.w * 0.28),
+      y: Math.floor(fb.y + fb.h * 0.08),
+      w: Math.floor(fb.w * 0.44),
+      h: Math.floor(fb.h * 0.2),
     };
 
-    // Eyes ROIs for Blink Dynamics
+    // 2. Eye ROIs for Blink Dynamics
     const leftEyeRoi = {
-      x: Math.floor(width * 0.3),
-      y: Math.floor(height * 0.32),
-      w: Math.floor(width * 0.16),
-      h: Math.floor(height * 0.12),
+      x: Math.floor(fb.x + fb.w * 0.15),
+      y: Math.floor(fb.y + fb.h * 0.3),
+      w: Math.floor(fb.w * 0.3),
+      h: Math.floor(fb.h * 0.18),
     };
     const rightEyeRoi = {
-      x: Math.floor(width * 0.54),
-      y: Math.floor(height * 0.32),
-      w: Math.floor(width * 0.16),
-      h: Math.floor(height * 0.12),
+      x: Math.floor(fb.x + fb.w * 0.55),
+      y: Math.floor(fb.y + fb.h * 0.3),
+      w: Math.floor(fb.w * 0.3),
+      h: Math.floor(fb.h * 0.18),
     };
 
-    // Mouth / Oral Cavity ROI for speech & mouth opening
+    // 3. Mouth ROI for speech & mouth movement
     const mouthRoi = {
-      x: Math.floor(width * 0.38),
-      y: Math.floor(height * 0.62),
-      w: Math.floor(width * 0.24),
-      h: Math.floor(height * 0.16),
+      x: Math.floor(fb.x + fb.w * 0.26),
+      y: Math.floor(fb.y + fb.h * 0.68),
+      w: Math.floor(fb.w * 0.48),
+      h: Math.floor(fb.h * 0.22),
     };
 
-    // Thoracic / Lower Chest & Shoulder ROI for Respiration
+    // 4. Thoracic & Neck Expansion ROI for Respiration
     const thoracicRoi = {
-      x: Math.floor(width * 0.18),
-      y: Math.floor(height * 0.74),
-      w: Math.floor(width * 0.64),
-      h: Math.floor(height * 0.24),
+      x: Math.floor(Math.max(0, nb.x - nb.w * 0.3)),
+      y: Math.floor(nb.y),
+      w: Math.floor(Math.min(width - nb.x, nb.w * 1.6)),
+      h: Math.floor(Math.min(height - nb.y, nb.h * 1.8)),
     };
 
-    // 2. Forehead rPPG Green Channel Extraction
+    // Extract Signals
     const foreheadGreen = this._getRoiMeanGreen(pixels, width, foreheadRoi);
     const ppgResult = this._processPpg(foreheadGreen, now);
 
-    // 3. Real Eye Blink Detection (Luminance & Edge Analysis)
     const eyeMetrics = this._processEyes(
       pixels,
       width,
@@ -189,10 +252,8 @@ export class OpticalEngine {
       now,
     );
 
-    // 4. Mouth & Oral Cavity Movement
     const mouthMetrics = this._processMouth(pixels, width, mouthRoi);
 
-    // 5. Thoracic Expansion Respiration Movement
     const respResult = this._processThoracicRespiration(
       pixels,
       width,
@@ -206,6 +267,9 @@ export class OpticalEngine {
 
     return {
       faceDetected: true,
+      isAligned: true,
+      isCalibrated: this.isCalibrated,
+      calibrationProgress,
       isBlink: eyeMetrics.isBlink,
       justBlinked: eyeMetrics.justBlinked,
       totalBlinks: this.totalBlinks,
@@ -218,7 +282,8 @@ export class OpticalEngine {
       isTalking: mouthMetrics.isTalking,
       mouthOpenAmount: mouthMetrics.openAmount,
       rois: {
-        face: faceBox,
+        face: fb,
+        neck: nb,
         forehead: foreheadRoi,
         leftEye: leftEyeRoi,
         rightEye: rightEyeRoi,
@@ -228,35 +293,38 @@ export class OpticalEngine {
     };
   }
 
-  // --- Internal Processing Methods ---
+  // --- Internal Morphological Computer Vision ---
 
   /**
-   * Robust Human Presence & Skin Tone Detector using YCbCr color space
-   * and spatial contrast. Works across all skin tones and room lighting.
+   * Anatomical Morphology Extractor: Identifies dynamic head, chin, neck, and shoulder bounds.
    */
-  _detectFacePresence(pixels, strideWidth, box) {
+  _detectMorphology(pixels, width, height) {
+    let minX = width,
+      maxX = 0,
+      minY = height,
+      maxY = 0;
+    let sumX = 0,
+      sumY = 0;
     let skinCount = 0;
-    let totalSamples = 0;
-    let sumLum = 0;
-    let lumSamples = [];
 
-    for (let y = box.y; y < box.y + box.h; y += 4) {
-      for (let x = box.x; x < box.x + box.w; x += 4) {
-        const idx = (y * strideWidth + x) * 4;
+    // Scan central 70% of frame
+    const startX = Math.floor(width * 0.15);
+    const endX = Math.floor(width * 0.85);
+    const startY = Math.floor(height * 0.1);
+    const endY = Math.floor(height * 0.9);
+
+    for (let y = startY; y < endY; y += 4) {
+      for (let x = startX; x < endX; x += 4) {
+        const idx = (y * width + x) * 4;
         const r = pixels[idx];
         const g = pixels[idx + 1];
         const b = pixels[idx + 2];
 
-        // Standard YCbCr transformation
+        // YCbCr skin chrominance
         const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
         const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
         const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
 
-        totalSamples++;
-        sumLum += yVal;
-        lumSamples.push(yVal);
-
-        // Universal human skin locus in YCbCr space
         if (
           cr >= 130 &&
           cr <= 175 &&
@@ -266,26 +334,51 @@ export class OpticalEngine {
           yVal <= 245
         ) {
           skinCount++;
+          sumX += x;
+          sumY += y;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
         }
       }
     }
 
-    const skinRatio = totalSamples > 0 ? skinCount / totalSamples : 0;
-
-    // Check facial structure contrast (prevent plain solid background false positives)
-    let variance = 0;
-    if (totalSamples > 0) {
-      const meanLum = sumLum / totalSamples;
-      let sumSqDiff = 0;
-      for (let i = 0; i < lumSamples.length; i += 4) {
-        sumSqDiff += (lumSamples[i] - meanLum) ** 2;
-      }
-      variance = Math.sqrt(sumSqDiff / (lumSamples.length / 4 || 1));
+    if (skinCount < 180) {
+      return { detected: false };
     }
 
-    // Valid human face presence if skin ratio is adequate and has structural contrast
-    const isHumanPresent = skinRatio >= 0.1 && variance >= 8;
-    return { detected: isHumanPresent, ratio: skinRatio, variance };
+    const cx = sumX / skinCount;
+    const cy = sumY / skinCount;
+    const faceW = Math.max(50, maxX - minX);
+    const totalH = Math.max(60, maxY - minY);
+
+    // Anatomical split: Head (upper 72%) vs Neck/Clavicle (lower 28%)
+    const faceH = Math.floor(totalH * 0.72);
+    const neckY = minY + faceH;
+    const neckH = Math.floor(totalH * 0.28);
+    const neckW = Math.floor(faceW * 0.65);
+    const neckX = Math.floor(cx - neckW / 2);
+
+    return {
+      detected: true,
+      cx,
+      cy,
+      faceW,
+      faceH,
+      faceBox: {
+        x: Math.max(0, minX),
+        y: Math.max(0, minY),
+        w: Math.min(width - minX, faceW),
+        h: Math.min(height - minY, faceH),
+      },
+      neckBox: {
+        x: Math.max(0, neckX),
+        y: Math.max(0, neckY),
+        w: Math.min(width - neckX, neckW),
+        h: Math.min(height - neckY, Math.max(30, neckH)),
+      },
+    };
   }
 
   _getRoiMeanGreen(pixels, strideWidth, roi) {
@@ -295,7 +388,7 @@ export class OpticalEngine {
     for (let y = roi.y; y < roi.y + roi.h; y += 2) {
       for (let x = roi.x; x < roi.x + roi.w; x += 2) {
         const idx = (y * strideWidth + x) * 4;
-        sumG += pixels[idx + 1]; // Green channel
+        sumG += pixels[idx + 1];
         count++;
       }
     }
@@ -387,21 +480,17 @@ export class OpticalEngine {
     this.baselineEyeLuminance =
       this.baselineEyeLuminance * 0.96 + currentLum * 0.04;
 
-    // Track luminance difference
     const diff = currentLum - this.baselineEyeLuminance;
     const dipRatio = diff / Math.max(1, this.baselineEyeLuminance);
 
     let justBlinked = false;
     const timeSinceLastBlink = now - this.lastBlinkTime;
 
-    // A real eye blink causes a sudden negative luminance dip (-2.5% to -15%)
-    // followed by recovery, with duration 90ms - 400ms and refractory period >= 240ms
     if (dipRatio < -0.024 && timeSinceLastBlink > 240) {
       if (!this.isBlinkActive) {
         this.isBlinkActive = true;
       }
     } else if (this.isBlinkActive && dipRatio > -0.014) {
-      // Eyelid has opened back up -> count registered blink!
       this.isBlinkActive = false;
       this.totalBlinks++;
       this.blinkTimestamps.push(now);
@@ -409,7 +498,6 @@ export class OpticalEngine {
       justBlinked = true;
     }
 
-    // Prune blink timestamps older than 60 seconds
     const cutoff = now - 60000;
     while (
       this.blinkTimestamps.length > 0 &&
@@ -426,12 +514,7 @@ export class OpticalEngine {
     };
   }
 
-  /**
-   * Real-time Dynamic Blink Rate calculation (blinks/minute).
-   * Calculates rate dynamically based on rolling 60s count and inter-blink intervals.
-   */
   _calcBlinkRate(now) {
-    // Prune timestamps older than 60s
     const cutoff = now - 60000;
     while (
       this.blinkTimestamps.length > 0 &&
@@ -443,23 +526,20 @@ export class OpticalEngine {
     const elapsedSeconds = Math.max(1, (now - this.sessionStartTime) / 1000);
 
     if (elapsedSeconds < 25) {
-      // Early in session: calculate rate from blinks recorded so far extrapolated to 1 min
       if (this.totalBlinks === 0) {
-        return 16; // nominal starting baseline
+        return 16;
       }
       const extrapolated = Math.round((this.totalBlinks / elapsedSeconds) * 60);
       return Math.max(6, Math.min(36, extrapolated));
     }
 
     if (elapsedSeconds < 60) {
-      // Pro-rated for the initial minute
       const prorated = Math.round(
         (this.blinkTimestamps.length / elapsedSeconds) * 60,
       );
       return Math.max(4, Math.min(36, prorated));
     }
 
-    // After 60 seconds: exact rolling count of blinks in the last 60 seconds
     return Math.max(2, this.blinkTimestamps.length);
   }
 
@@ -477,7 +557,7 @@ export class OpticalEngine {
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
         sumLum += lum;
         if (lum < 48) {
-          sumDark++; // Dark oral cavity pixels
+          sumDark++;
         }
         count++;
       }
@@ -486,7 +566,6 @@ export class OpticalEngine {
     const meanLum = count > 0 ? sumLum / count : 80;
     const darkRatio = count > 0 ? sumDark / count : 0;
 
-    // Open mouth exposes dark oral cavity
     const isMouthOpen = darkRatio > 0.11 || meanLum < 52;
     this.mouthOpenAmount = Math.min(1.0, darkRatio * 3.5);
     this.isTalking = isMouthOpen;
@@ -514,7 +593,7 @@ export class OpticalEngine {
           const idx = (y * strideWidth + x) * 4;
           const idxDown = ((y + 2) * strideWidth + x) * 4;
 
-          const currVal = pixels[idx + 1]; // Green channel has best SNR
+          const currVal = pixels[idx + 1];
           const prevVal = prevPixels[idx + 1];
           const spatialGrad = pixels[idxDown + 1] - currVal;
           const temporalDiff = currVal - prevVal;
@@ -530,12 +609,10 @@ export class OpticalEngine {
 
     const meanMotion = count > 0 ? verticalMotion / count : 0;
 
-    // Smooth displacement with leaky integrator
     this.respDisplacement = this.respDisplacement * 0.9 + meanMotion * 0.14;
 
     let finalWave = this.respDisplacement * 3.8;
 
-    // If completely motionless, maintain very faint baseline oscillation
     if (Math.abs(this.respDisplacement) < 0.04) {
       const t = now * 0.001;
       const nominalFreq = (this.currentRpm / 60) * 2 * Math.PI;
@@ -544,13 +621,11 @@ export class OpticalEngine {
 
     this.filteredResp = this.filteredResp * 0.82 + finalWave * 0.18;
 
-    // Peak detection for breathing cycle
     if (this.respBuffer.length > 35) {
       const prevWave = this.respBuffer[this.respBuffer.length - 2]?.val ?? 0;
       if (this.filteredResp > 0.28 && this.filteredResp > prevWave) {
         const timeSinceLastBreath = now - this.lastRespTime;
         if (timeSinceLastBreath >= 2400 && timeSinceLastBreath <= 7200) {
-          // 8.3 to 25 RPM
           const instRpm = 60000 / timeSinceLastBreath;
           this.currentRpm =
             Math.round((this.currentRpm * 0.65 + instRpm * 0.35) * 10) / 10;

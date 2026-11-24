@@ -125,10 +125,10 @@ export default function App() {
     if (!telemetry) return;
     lastOpticalTimeRef.current = Date.now();
 
-    const hasFace = Boolean(telemetry.faceDetected);
-    setIsHumanDetected(hasFace);
+    const isLockedAndAligned = Boolean(telemetry.isAligned);
+    setIsHumanDetected(isLockedAndAligned);
 
-    if (hasFace) {
+    if (isLockedAndAligned) {
       // 1. Real optical waveforms (30Hz real-time)
       if (typeof telemetry.ppgWave === "number") {
         setPpgHistory((prev) => [...prev.slice(-119), telemetry.ppgWave]);
