@@ -25,15 +25,15 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [isHumanDetected, setIsHumanDetected] = useState(false);
 
-  // Vitals State
+  // Vitals State - Initially 0 until camera starts and face is aligned & detected
   const [vitals, setVitals] = useState({
-    pulse_bpm: 72,
-    pulse_confidence: 88,
-    hrv_rmssd_ms: 45.2,
-    respiration_rpm: 14.5,
-    blink_rate_cpm: 16,
+    pulse_bpm: 0,
+    pulse_confidence: 0,
+    hrv_rmssd_ms: 0,
+    respiration_rpm: 0,
+    blink_rate_cpm: 0,
     blinks_total: 0,
-    cognitive_state: "CALM_FLOW",
+    cognitive_state: "STANDBY",
     eye_strain_risk: false,
     is_talking: false,
   });
@@ -99,39 +99,9 @@ export default function App() {
             Date.now() - lastOpticalTimeRef.current < 2000;
 
           if (!isOpticalActive && !isSessionActive) {
-            // Standby / inactive session fallback
-            const ppgVal = d.ppgWave ?? d.ppg_wave;
-            const respVal = d.respWave ?? d.resp_wave;
-
-            if (typeof ppgVal === "number") {
-              setPpgHistory((prev) => [...prev.slice(-119), ppgVal]);
-            }
-            if (typeof respVal === "number") {
-              setRespHistory((prev) => [...prev.slice(-119), respVal]);
-            }
-
-            setVitals((prev) => ({
-              ...prev,
-              pulse_bpm: v.pulseBpm ?? d.pulse_bpm ?? prev.pulse_bpm,
-              pulse_confidence:
-                v.pulseConfidence ??
-                d.pulse_confidence ??
-                prev.pulse_confidence,
-              hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
-              respiration_rpm:
-                v.respirationRpm ?? d.respiration_rpm ?? prev.respiration_rpm,
-              blink_rate_cpm:
-                v.blinkRatePerMin ?? d.blink_rate_cpm ?? prev.blink_rate_cpm,
-              blinks_total:
-                v.blinksTotal ?? d.blinks_total ?? prev.blinks_total ?? 0,
-              cognitive_state:
-                v.cognitiveState ?? d.cognitive_state ?? prev.cognitive_state,
-              eye_strain_risk:
-                v.eyeStrainRisk ?? d.eye_strain_risk ?? prev.eye_strain_risk,
-              is_talking: v.isTalking ?? d.is_talking ?? prev.is_talking,
-            }));
-          } else {
-            // When optical is running, sync only autonomic tone (HRV RMSSD) from background
+            // Keep at 0 in standby
+          } else if (isSessionActive && isHumanDetected) {
+            // When optical is running and face is detected, sync autonomic tone (HRV)
             setVitals((prev) => ({
               ...prev,
               hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
@@ -148,7 +118,7 @@ export default function App() {
     return () => {
       socket.close();
     };
-  }, [isSessionActive]);
+  }, [isSessionActive, isHumanDetected]);
 
   // Optical Telemetry Callback from CameraPreviewHUD
   const handleOpticalTelemetry = useCallback((telemetry) => {
@@ -198,7 +168,7 @@ export default function App() {
         };
       });
     } else {
-      // No human detected: clear waveforms so no fake graph is rendered
+      // No human detected / out of circle: zero waveforms
       setPpgHistory([]);
       setRespHistory([]);
     }
@@ -229,6 +199,17 @@ export default function App() {
       setIsHumanDetected(false);
       setPpgHistory([]);
       setRespHistory([]);
+      setVitals({
+        pulse_bpm: 0,
+        pulse_confidence: 0,
+        hrv_rmssd_ms: 0,
+        respiration_rpm: 0,
+        blink_rate_cpm: 0,
+        blinks_total: 0,
+        cognitive_state: "STANDBY",
+        eye_strain_risk: false,
+        is_talking: false,
+      });
     } catch (e) {
       console.error("Revoke consent failed:", e);
     }
@@ -257,6 +238,14 @@ export default function App() {
         setIsHumanDetected(false);
         setPpgHistory([]);
         setRespHistory([]);
+        setVitals((prev) => ({
+          ...prev,
+          pulse_bpm: 0,
+          pulse_confidence: 0,
+          respiration_rpm: 0,
+          blink_rate_cpm: 0,
+          cognitive_state: "STANDBY",
+        }));
       }
     } catch (e) {
       console.error("Stop session error:", e);
@@ -269,11 +258,17 @@ export default function App() {
       setPpgHistory([]);
       setRespHistory([]);
       setIsHumanDetected(false);
-      setVitals((prev) => ({
-        ...prev,
+      setVitals({
+        pulse_bpm: 0,
+        pulse_confidence: 0,
+        hrv_rmssd_ms: 0,
+        respiration_rpm: 0,
+        blink_rate_cpm: 0,
         blinks_total: 0,
-        blink_rate_cpm: 16,
-      }));
+        cognitive_state: "STANDBY",
+        eye_strain_risk: false,
+        is_talking: false,
+      });
     } catch (e) {
       console.error("Reset session error:", e);
     }
@@ -380,7 +375,9 @@ export default function App() {
           <div className="lg:col-span-7 flex flex-col">
             <BoxBreathingPacer
               userRespirationRate={
-                isHumanDetected ? vitals.respiration_rpm : 14.0
+                isHumanDetected && vitals.respiration_rpm > 0
+                  ? vitals.respiration_rpm
+                  : 14.0
               }
             />
           </div>
