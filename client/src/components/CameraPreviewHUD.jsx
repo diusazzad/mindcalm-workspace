@@ -31,6 +31,7 @@ export default function CameraPreviewHUD({
     isAligned: false,
     isCalibrated: false,
     calibrationProgress: 0,
+    faceBox: null,
     isBlink: false,
     justBlinked: false,
     totalBlinks: 0,
@@ -64,6 +65,7 @@ export default function CameraPreviewHUD({
         isAligned: false,
         isCalibrated: false,
         calibrationProgress: 0,
+        faceBox: null,
         isBlink: false,
         justBlinked: false,
         totalBlinks: 0,
@@ -115,6 +117,7 @@ export default function CameraPreviewHUD({
               isAligned: telemetry.isAligned,
               isCalibrated: telemetry.isCalibrated,
               calibrationProgress: telemetry.calibrationProgress,
+              faceBox: telemetry.rois?.face || null,
               isBlink: telemetry.isBlink,
               justBlinked: telemetry.justBlinked,
               totalBlinks: telemetry.totalBlinks,
@@ -204,13 +207,24 @@ export default function CameraPreviewHUD({
     }
   }, [stream]);
 
-  // Dynamic custom silhouette size based on user's calibrated head ratio
-  const customGuideWidth = calibratedProfile?.headWidthPx
-    ? Math.min(180, Math.max(130, calibratedProfile.headWidthPx))
-    : 150;
-  const customGuideHeight = calibratedProfile?.headHeightPx
-    ? Math.min(230, Math.max(170, calibratedProfile.headHeightPx))
-    : 195;
+  // Dynamic face scaling based on live camera detection and user's calibrated profile
+  const currentRatio =
+    calibratedProfile?.headRatio ||
+    (opticalStats.faceBox
+      ? Math.round((opticalStats.faceBox.h / opticalStats.faceBox.w) * 100) /
+        100
+      : 1.35);
+
+  const baseWidth = opticalStats.faceBox?.w
+    ? opticalStats.faceBox.w * 1.15
+    : calibratedProfile?.headWidthPx
+      ? calibratedProfile.headWidthPx * 1.15
+      : 145;
+
+  const customGuideWidth = Math.round(Math.min(210, Math.max(115, baseWidth)));
+  const customGuideHeight = Math.round(
+    customGuideWidth * Math.max(1.22, Math.min(1.45, currentRatio)),
+  );
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-xl flex flex-col justify-between">
@@ -316,7 +330,9 @@ export default function CameraPreviewHUD({
               <span className="text-slate-400 font-mono">
                 {calibratedProfile
                   ? `RATIO: ${calibratedProfile.headRatio}`
-                  : "30Hz OPTICAL"}
+                  : opticalStats.faceBox
+                    ? `RATIO: ${Math.round((opticalStats.faceBox.h / opticalStats.faceBox.w) * 100) / 100}`
+                    : "30Hz OPTICAL"}
               </span>
             </div>
 
@@ -377,7 +393,12 @@ export default function CameraPreviewHUD({
                   </div>
 
                   {/* Neck & Clavicle Guide (ঘাড় গাইড) */}
-                  <div className="w-20 h-10 -mt-2 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center">
+                  <div
+                    style={{
+                      width: `${Math.round(customGuideWidth * 0.55)}px`,
+                    }}
+                    className="h-10 -mt-2 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center"
+                  >
                     <span className="text-[7px] font-mono text-emerald-300 font-semibold tracking-wider">
                       NECK / THORACIC
                     </span>
@@ -410,7 +431,12 @@ export default function CameraPreviewHUD({
                   </div>
 
                   {/* Neck Guide Box */}
-                  <div className="w-22 h-10 -mt-2 border-x-2 border-b-2 border-dashed border-rose-500/70 bg-rose-950/20 rounded-b-xl flex items-center justify-center">
+                  <div
+                    style={{
+                      width: `${Math.round((customGuideWidth + 10) * 0.55)}px`,
+                    }}
+                    className="h-10 -mt-2 border-x-2 border-b-2 border-dashed border-rose-500/70 bg-rose-950/20 rounded-b-xl flex items-center justify-center"
+                  >
                     <span className="text-[7px] font-mono text-rose-300">
                       NECK BASE
                     </span>

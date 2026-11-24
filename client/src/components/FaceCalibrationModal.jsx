@@ -32,9 +32,9 @@ export default function FaceCalibrationModal({
     headRatio: 0,
     headWidthPx: 0,
     headHeightPx: 0,
-    eyeLevelPct: 0,
-    mouthLevelPct: 0,
-    neckLevelPct: 0,
+    eyeLevelPct: 35,
+    mouthLevelPct: 72,
+    neckLevelPct: 95,
   });
 
   const animRef = useRef(null);
@@ -135,12 +135,12 @@ export default function FaceCalibrationModal({
             const frameData = ctx.getImageData(0, 0, 320, 240);
             const pixels = frameData.data;
 
-            // Skin chrominance scan to locate head bounds
-            let minX = 320, maxX = 0, minY = 240, maxY = 0;
-            let sumX = 0, sumY = 0;
-            let count = 0;
+            // Skin chrominance scan to locate head bounds with shoulder-flare rejection
+            const rowStats = {};
+            let totalSkin = 0;
 
             for (let y = 15; y < 225; y += 4) {
+              rowStats[y] = { count: 0, minX: 320, maxX: 0 };
               for (let x = 30; x < 290; x += 4) {
                 const idx = (y * 320 + x) * 4;
                 const r = pixels[idx];
@@ -151,28 +151,70 @@ export default function FaceCalibrationModal({
                 const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
                 const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
 
-                if (cr >= 130 && cr <= 175 && cb >= 75 && cb <= 130 && yVal >= 25 && yVal <= 245) {
-                  count++;
-                  sumX += x;
-                  sumY += y;
-                  if (x < minX) minX = x;
-                  if (x > maxX) maxX = x;
-                  if (y < minY) minY = y;
-                  if (y > maxY) maxY = y;
+                if (
+                  cr >= 130 &&
+                  cr <= 175 &&
+                  cb >= 75 &&
+                  cb <= 130 &&
+                  yVal >= 25 &&
+                  yVal <= 245
+                ) {
+                  totalSkin++;
+                  rowStats[y].count++;
+                  if (x < rowStats[y].minX) rowStats[y].minX = x;
+                  if (x > rowStats[y].maxX) rowStats[y].maxX = x;
                 }
               }
             }
 
-            const faceFound = count > 200;
+            const faceFound = totalSkin > 150;
             if (faceFound) {
-              const headW = maxX - minX;
-              const headH = maxY - minY;
-              const ratio = Math.round((headH / Math.max(1, headW)) * 100) / 100;
+              // 1. Top of head
+              let headTopY = 240;
+              for (let y = 15; y < 225; y += 4) {
+                if (rowStats[y].count >= 3) {
+                  headTopY = y;
+                  break;
+                }
+              }
+
+              // 2. Scan face rows, stopping before shoulder flare
+              let maxFaceW = 0;
+              let faceMinX = 320;
+              let faceMaxX = 0;
+              let chinY = Math.min(220, headTopY + 120);
+
+              for (let y = headTopY; y < 225; y += 4) {
+                if (rowStats[y].count >= 3) {
+                  const w = rowStats[y].maxX - rowStats[y].minX;
+                  if (maxFaceW > 55 && w > maxFaceW * 1.35) {
+                    chinY = y;
+                    break;
+                  }
+                  if (w > maxFaceW) {
+                    maxFaceW = w;
+                  }
+                  if (rowStats[y].minX < faceMinX) faceMinX = rowStats[y].minX;
+                  if (rowStats[y].maxX > faceMaxX) faceMaxX = rowStats[y].maxX;
+                  chinY = y;
+                }
+              }
+
+              const headW = Math.max(
+                60,
+                Math.min(180, maxFaceW || faceMaxX - faceMinX),
+              );
+              const rawH = Math.max(70, chinY - headTopY);
+              const boundedRatio = Math.max(
+                1.25,
+                Math.min(1.45, Math.round((rawH / headW) * 100) / 100),
+              );
+              const headH = Math.round(headW * boundedRatio);
 
               setMetrics((prev) => ({
                 ...prev,
                 faceDetected: true,
-                headRatio: ratio,
+                headRatio: boundedRatio,
                 headWidthPx: headW,
                 headHeightPx: headH,
                 eyeLevelPct: 35,
@@ -183,7 +225,7 @@ export default function FaceCalibrationModal({
               if (isScanning && !isScanSuccess) {
                 const acc = sampleAccRef.current;
                 acc.samples++;
-                acc.ratios.push(ratio);
+                acc.ratios.push(boundedRatio);
                 acc.widths.push(headW);
                 acc.heights.push(headH);
               }
@@ -263,11 +305,16 @@ export default function FaceCalibrationModal({
         ? acc.heights.reduce((a, b) => a + b, 0) / acc.heights.length
         : 160;
 
+    const clampedRatio = Math.max(
+      1.25,
+      Math.min(1.45, Math.round(avgRatio * 100) / 100),
+    );
+
     setMetrics({
       faceDetected: true,
-      headRatio: Math.round(avgRatio * 100) / 100,
+      headRatio: clampedRatio,
       headWidthPx: Math.round(avgWidth),
-      headHeightPx: Math.round(avgHeight),
+      headHeightPx: Math.round(avgWidth * clampedRatio),
       eyeLevelPct: 35,
       mouthLevelPct: 72,
       neckLevelPct: 95,
@@ -279,7 +326,7 @@ export default function FaceCalibrationModal({
       onCalibrationComplete({
         headRatio: metrics.headRatio || 1.35,
         headWidthPx: metrics.headWidthPx || 120,
-        headHeightPx: metrics.headHeightPx || 160,
+        headHeightPx: metrics.headHeightPx || 162,
         eyeLevelPct: 35,
         mouthLevelPct: 72,
         neckLevelPct: 95,
@@ -289,6 +336,13 @@ export default function FaceCalibrationModal({
   };
 
   if (!isOpen) return null;
+
+  // Dynamic Guide Oval Sizing (scales in real-time with user's detected head size)
+  const modalGuideW =
+    metrics.faceDetected && metrics.headWidthPx
+      ? Math.round(Math.min(250, Math.max(130, metrics.headWidthPx * 1.25)))
+      : 176;
+  const modalGuideH = Math.round(modalGuideW * (metrics.headRatio || 1.35));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
@@ -304,7 +358,8 @@ export default function FaceCalibrationModal({
                 Biometric Head Calibration & Morphological Scan
               </h3>
               <p className="text-xs text-slate-400">
-                Measures your personal head size, eye plane & neck ratio (5 Seconds)
+                Measures your personal head size, eye plane & neck ratio (5
+                Seconds)
               </p>
             </div>
           </div>
@@ -329,9 +384,13 @@ export default function FaceCalibrationModal({
 
             {/* Scanning Guide Silhouette */}
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center select-none p-4">
-              {/* Central Head Alignment Silhouette */}
+              {/* Central Head Alignment Silhouette - Scaled Dynamically */}
               <div
-                className={`w-44 h-56 border-2 border-dashed rounded-full flex flex-col items-center justify-between py-3 transition-all duration-300 ${
+                style={{
+                  width: `${modalGuideW}px`,
+                  height: `${modalGuideH}px`,
+                }}
+                className={`border-2 border-dashed rounded-full flex flex-col items-center justify-between py-3 transition-all duration-200 ${
                   isScanSuccess
                     ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.5)]"
                     : isScanning
@@ -384,19 +443,25 @@ export default function FaceCalibrationModal({
           {/* Morphological Scan Metrics Feedback */}
           <div className="grid grid-cols-3 gap-3 text-center text-xs font-mono">
             <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">Head Ratio (H/W)</span>
+              <span className="text-slate-400 block text-[10px]">
+                Head Ratio (H/W)
+              </span>
               <span className="text-cyan-300 font-bold text-sm">
                 {metrics.headRatio > 0 ? metrics.headRatio : "--"}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">Eye Plane</span>
+              <span className="text-slate-400 block text-[10px]">
+                Eye Plane
+              </span>
               <span className="text-emerald-300 font-bold text-sm">
                 {metrics.faceDetected ? "Aligned" : "--"}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">Scan Status</span>
+              <span className="text-slate-400 block text-[10px]">
+                Scan Status
+              </span>
               <span
                 className={`font-bold text-sm ${
                   isScanSuccess
@@ -406,7 +471,11 @@ export default function FaceCalibrationModal({
                       : "text-slate-400"
                 }`}
               >
-                {isScanSuccess ? "100% Ready" : isScanning ? `${scanProgress}%` : "Awaiting"}
+                {isScanSuccess
+                  ? "100% Ready"
+                  : isScanning
+                    ? `${scanProgress}%`
+                    : "Awaiting"}
               </span>
             </div>
           </div>
@@ -440,7 +509,9 @@ export default function FaceCalibrationModal({
               >
                 <Scan className="h-4 w-4" />
                 <span>
-                  {isScanning ? `Scanning (${scanSecondsLeft}s Left)...` : "Start 5-Second Head Scan"}
+                  {isScanning
+                    ? `Scanning (${scanSecondsLeft}s Left)...`
+                    : "Start 5-Second Head Scan"}
                 </span>
               </button>
             ) : (

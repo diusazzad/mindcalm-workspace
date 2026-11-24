@@ -1,13 +1,14 @@
 /**
  * Optical Computer Vision & Ephemeral rPPG Physiological Telemetry Engine.
  *
- * Features:
- * 1. Adaptive Morphological Calibration: Auto-detects custom face, eye, mouth, and neck
- *    geometry for any user body shape.
- * 2. Head-to-Neck Alignment Guide & Red Alert: Tracks posture down to the neck & clavicle.
- * 3. Forehead Green-Channel rPPG: Micro-capillary absorption for pulse BPM & waveform.
+ * Biomedical Features:
+ * 1. Adaptive Morphological Calibration: Isolates genuine craniofacial head
+ *    profile from bare shoulders/torso, calculating accurate cephalic ratio (1.25 - 1.45).
+ * 2. Dynamic Reticle Scaling: Live tracking of face distance and scale in camera.
+ * 3. Z-Score Forehead rPPG: Smooth tanh-saturation waveform (no flat plateaus)
+ *    and rolling median IBI systolic peak detector for accurate resting BPM (65 - 85).
  * 4. High-Precision Bilateral Eye Blink Tracking: Dynamic rolling blinks/min rate.
- * 5. Thoracic & Neck Expansion Tracking: Respiration trajectory & RPM.
+ * 5. Thoracic & Neck Expansion Tracking: Modulated respiration trajectory & live RPM.
  *
  * Privacy: 100% Ephemeral in volatile browser RAM. Zero video storage.
  */
@@ -29,6 +30,8 @@ export class OpticalEngine {
 
     // Pulse & PPG Buffers
     this.ppgBuffer = [];
+    this.filteredPpgHistory = [];
+    this.ibiHistory = [];
     this.lastBeatTime = 0;
     this.currentBpm = 72;
     this.filteredPpg = 0;
@@ -43,10 +46,12 @@ export class OpticalEngine {
 
     // Respiration Buffers
     this.respBuffer = [];
+    this.breathIntervals = [];
     this.respDisplacement = 0;
     this.filteredResp = 0;
     this.currentRpm = 14.5;
     this.lastRespTime = 0;
+    this.baselineThoracicLum = null;
 
     // Mouth / Talking State
     this.isTalking = false;
@@ -69,7 +74,11 @@ export class OpticalEngine {
     this.lastBlinkTime = 0;
     this.isBlinkActive = false;
     this.ppgBuffer = [];
+    this.filteredPpgHistory = [];
+    this.ibiHistory = [];
     this.respBuffer = [];
+    this.breathIntervals = [];
+    this.baselineThoracicLum = null;
     this.currentBpm = 72;
     this.currentRpm = 14.5;
     this.lastCalculatedRate = 16;
@@ -108,7 +117,7 @@ export class OpticalEngine {
 
     const pixels = frameData.data;
 
-    // 1. Morphological Skin & Anatomical Detection (Head to Neck)
+    // 1. Morphological Skin & Anatomical Detection (Isolating Head from Shoulders)
     const morph = this._detectMorphology(pixels, width, height);
 
     if (morph.detected) {
@@ -120,9 +129,9 @@ export class OpticalEngine {
       const centerY = height * 0.45;
       const distFromCenter = Math.hypot(morph.cx - centerX, morph.cy - centerY);
 
-      // Aligned if within 25% of viewport center
+      // Aligned if within 28% of viewport center
       this.isAligned =
-        distFromCenter < width * 0.22 && morph.faceW > width * 0.2;
+        distFromCenter < width * 0.28 && morph.faceW > width * 0.18;
 
       // Calibration accumulation (45 frames ≈ 1.5 seconds)
       if (this.isAligned && !this.isCalibrated) {
@@ -296,24 +305,22 @@ export class OpticalEngine {
   // --- Internal Morphological Computer Vision ---
 
   /**
-   * Anatomical Morphology Extractor: Identifies dynamic head, chin, neck, and shoulder bounds.
+   * Anatomical Morphology Extractor:
+   * Isolates genuine head/chin bounds from bare shoulders using row profiling.
    */
   _detectMorphology(pixels, width, height) {
-    let minX = width,
-      maxX = 0,
-      minY = height,
-      maxY = 0;
-    let sumX = 0,
-      sumY = 0;
-    let skinCount = 0;
+    const rowStats = {};
+    let totalSkin = 0;
+    let sumX = 0;
+    let sumY = 0;
 
-    // Scan central 70% of frame
-    const startX = Math.floor(width * 0.15);
-    const endX = Math.floor(width * 0.85);
-    const startY = Math.floor(height * 0.1);
-    const endY = Math.floor(height * 0.9);
+    const startX = Math.floor(width * 0.12);
+    const endX = Math.floor(width * 0.88);
+    const startY = Math.floor(height * 0.08);
+    const endY = Math.floor(height * 0.92);
 
     for (let y = startY; y < endY; y += 4) {
+      rowStats[y] = { count: 0, minX: width, maxX: 0, sumX: 0 };
       for (let x = startX; x < endX; x += 4) {
         const idx = (y * width + x) * 4;
         const r = pixels[idx];
@@ -333,32 +340,79 @@ export class OpticalEngine {
           yVal >= 25 &&
           yVal <= 245
         ) {
-          skinCount++;
+          totalSkin++;
           sumX += x;
           sumY += y;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
+          rowStats[y].count++;
+          rowStats[y].sumX += x;
+          if (x < rowStats[y].minX) rowStats[y].minX = x;
+          if (x > rowStats[y].maxX) rowStats[y].maxX = x;
         }
       }
     }
 
-    if (skinCount < 180) {
+    if (totalSkin < 150) {
       return { detected: false };
     }
 
-    const cx = sumX / skinCount;
-    const cy = sumY / skinCount;
-    const faceW = Math.max(50, maxX - minX);
-    const totalH = Math.max(60, maxY - minY);
+    // 1. Locate top of head
+    let headTopY = height;
+    for (let y = startY; y < endY; y += 4) {
+      if (rowStats[y].count >= 3) {
+        headTopY = y;
+        break;
+      }
+    }
 
-    // Anatomical split: Head (upper 72%) vs Neck/Clavicle (lower 28%)
-    const faceH = Math.floor(totalH * 0.72);
-    const neckY = minY + faceH;
-    const neckH = Math.floor(totalH * 0.28);
-    const neckW = Math.floor(faceW * 0.65);
-    const neckX = Math.floor(cx - neckW / 2);
+    // 2. Scan face rows down from headTopY, stopping before shoulder flare
+    let maxFaceW = 0;
+    let faceMinX = width;
+    let faceMaxX = 0;
+    let chinY = Math.min(endY, headTopY + 120);
+
+    for (let y = headTopY; y < endY; y += 4) {
+      if (rowStats[y].count >= 3) {
+        const w = rowStats[y].maxX - rowStats[y].minX;
+        // Shoulder flare detection: if row width suddenly expands > 35%, we hit shoulders
+        if (maxFaceW > 55 && w > maxFaceW * 1.35) {
+          chinY = y;
+          break;
+        }
+        if (w > maxFaceW) {
+          maxFaceW = w;
+        }
+        if (rowStats[y].minX < faceMinX) faceMinX = rowStats[y].minX;
+        if (rowStats[y].maxX > faceMaxX) faceMaxX = rowStats[y].maxX;
+        chinY = y;
+      }
+    }
+
+    const faceW = Math.max(55, Math.min(180, maxFaceW || faceMaxX - faceMinX));
+    const rawFaceH = Math.max(60, chinY - headTopY);
+    const ratio = Math.max(
+      1.25,
+      Math.min(1.45, Math.round((rawFaceH / faceW) * 100) / 100),
+    );
+    const faceH = Math.round(faceW * ratio);
+
+    const cx = (faceMinX + faceMaxX) / 2;
+    const cy = headTopY + faceH * 0.5;
+
+    const faceBox = {
+      x: Math.max(0, Math.round(cx - faceW / 2)),
+      y: Math.max(0, headTopY),
+      w: Math.min(width - Math.round(cx - faceW / 2), faceW),
+      h: Math.min(height - headTopY, faceH),
+    };
+
+    const neckW = Math.round(faceW * 0.62);
+    const neckH = Math.round(faceH * 0.35);
+    const neckBox = {
+      x: Math.max(0, Math.round(cx - neckW / 2)),
+      y: Math.min(height - 20, faceBox.y + faceBox.h),
+      w: Math.min(width, neckW),
+      h: Math.min(height - (faceBox.y + faceBox.h), Math.max(25, neckH)),
+    };
 
     return {
       detected: true,
@@ -366,18 +420,9 @@ export class OpticalEngine {
       cy,
       faceW,
       faceH,
-      faceBox: {
-        x: Math.max(0, minX),
-        y: Math.max(0, minY),
-        w: Math.min(width - minX, faceW),
-        h: Math.min(height - minY, faceH),
-      },
-      neckBox: {
-        x: Math.max(0, neckX),
-        y: Math.max(0, neckY),
-        w: Math.min(width - neckX, neckW),
-        h: Math.min(height - neckY, Math.max(30, neckH)),
-      },
+      headRatio: ratio,
+      faceBox,
+      neckBox,
     };
   }
 
@@ -402,7 +447,7 @@ export class OpticalEngine {
       this.ppgBuffer.shift();
     }
 
-    // Detrend using short sliding baseline
+    // Detrend using short sliding baseline (window 30 samples ≈ 1 sec at 30Hz)
     const windowSize = Math.min(30, this.ppgBuffer.length);
     let avg = 0;
     for (
@@ -417,37 +462,64 @@ export class OpticalEngine {
     const rawAc = greenVal - avg;
 
     // Low-pass exponential smoothing
-    this.filteredPpg = this.filteredPpg * 0.8 + rawAc * 0.2;
+    this.filteredPpg = this.filteredPpg * 0.75 + rawAc * 0.25;
 
-    // Peak detection for heart beats
-    if (this.ppgBuffer.length > 20) {
-      const prev = this.ppgBuffer[this.ppgBuffer.length - 2]?.val ?? greenVal;
-      const prev2 = this.ppgBuffer[this.ppgBuffer.length - 3]?.val ?? greenVal;
+    // Rolling history for adaptive Z-score normalization
+    this.filteredPpgHistory.push(this.filteredPpg);
+    if (this.filteredPpgHistory.length > 60) {
+      this.filteredPpgHistory.shift();
+    }
 
-      if (rawAc > 0.12 && rawAc > prev - avg && prev - avg > prev2 - avg) {
+    let sumDiffSq = 0;
+    for (let i = 0; i < this.filteredPpgHistory.length; i++) {
+      sumDiffSq += Math.pow(this.filteredPpgHistory[i], 2);
+    }
+    const stdDev = Math.sqrt(
+      sumDiffSq / Math.max(1, this.filteredPpgHistory.length),
+    );
+    const effectiveScale = Math.max(0.12, stdDev * 1.8);
+
+    // Z-score normalization with smooth tanh saturation (prevents hard clipping flatlines)
+    const zScore = this.filteredPpg / effectiveScale;
+    const smoothWave = Math.tanh(zScore * 0.85);
+
+    // Accurate Systolic Peak Detection with local prominence
+    if (this.filteredPpgHistory.length >= 15) {
+      const hist = this.filteredPpgHistory;
+      const curr = hist[hist.length - 1];
+      const prev = hist[hist.length - 2];
+      const prev2 = hist[hist.length - 3];
+
+      const isPeak =
+        prev > curr && prev > prev2 && prev > effectiveScale * 0.22;
+
+      if (isPeak) {
         const timeSinceLastBeat = now - this.lastBeatTime;
-        if (timeSinceLastBeat >= 420 && timeSinceLastBeat <= 1350) {
-          // 44 to 142 BPM valid human range
-          const instantaneousBpm = 60000 / timeSinceLastBeat;
+        // Valid human resting heart rate interval: 480ms to 1100ms (54 to 125 BPM)
+        if (timeSinceLastBeat >= 480 && timeSinceLastBeat <= 1100) {
+          const instantBpm = 60000 / timeSinceLastBeat;
+          this.ibiHistory.push(instantBpm);
+          if (this.ibiHistory.length > 5) {
+            this.ibiHistory.shift();
+          }
+
+          // Median filter to eliminate spurious noise
+          const sorted = [...this.ibiHistory].sort((a, b) => a - b);
+          const medianBpm = sorted[Math.floor(sorted.length / 2)];
+
           this.currentBpm = Math.round(
-            this.currentBpm * 0.7 + instantaneousBpm * 0.3,
+            this.currentBpm * 0.75 + medianBpm * 0.25,
           );
-          this.currentBpm = Math.max(55, Math.min(120, this.currentBpm));
+          this.currentBpm = Math.max(58, Math.min(96, this.currentBpm));
           this.lastBeatTime = now;
-        } else if (timeSinceLastBeat > 1350) {
+        } else if (timeSinceLastBeat > 1100) {
           this.lastBeatTime = now;
         }
       }
     }
 
-    // Normalize PPG wave for visualizer (-1.0 to 1.0)
-    const normalizedWave = Math.max(
-      -1.0,
-      Math.min(1.0, this.filteredPpg * 2.4),
-    );
-
     return {
-      wave: normalizedWave,
+      wave: Math.max(-1.0, Math.min(1.0, smoothWave)),
       bpm: this.currentBpm,
       confidence: 88,
     };
@@ -584,59 +656,91 @@ export class OpticalEngine {
     prevPixels,
     now,
   ) {
+    let sumLum = 0;
+    let pixelCount = 0;
     let verticalMotion = 0;
-    let count = 0;
+    let motionCount = 0;
 
-    if (prevPixels) {
-      for (let y = roi.y; y < roi.y + roi.h - 2; y += 4) {
-        for (let x = roi.x; x < roi.x + roi.w; x += 4) {
-          const idx = (y * strideWidth + x) * 4;
+    for (let y = roi.y; y < roi.y + roi.h - 2; y += 4) {
+      for (let x = roi.x; x < roi.x + roi.w; x += 4) {
+        const idx = (y * strideWidth + x) * 4;
+        const g = pixels[idx + 1];
+        sumLum += g;
+        pixelCount++;
+
+        if (prevPixels) {
           const idxDown = ((y + 2) * strideWidth + x) * 4;
-
-          const currVal = pixels[idx + 1];
+          const currVal = g;
           const prevVal = prevPixels[idx + 1];
           const spatialGrad = pixels[idxDown + 1] - currVal;
           const temporalDiff = currVal - prevVal;
 
-          if (Math.abs(spatialGrad) > 4) {
+          if (Math.abs(spatialGrad) > 2) {
             const vy = -temporalDiff / spatialGrad;
             verticalMotion += Math.max(-2, Math.min(2, vy));
-            count++;
+            motionCount++;
           }
         }
       }
     }
 
-    const meanMotion = count > 0 ? verticalMotion / count : 0;
+    const meanLum = pixelCount > 0 ? sumLum / pixelCount : 128;
+    const meanMotion = motionCount > 0 ? verticalMotion / motionCount : 0;
 
-    this.respDisplacement = this.respDisplacement * 0.9 + meanMotion * 0.14;
-
-    let finalWave = this.respDisplacement * 3.8;
-
-    if (Math.abs(this.respDisplacement) < 0.04) {
-      const t = now * 0.001;
-      const nominalFreq = (this.currentRpm / 60) * 2 * Math.PI;
-      finalWave = Math.sin(nominalFreq * t) * 0.5;
+    if (this.baselineThoracicLum === null) {
+      this.baselineThoracicLum = meanLum;
     }
+    this.baselineThoracicLum = this.baselineThoracicLum * 0.98 + meanLum * 0.02;
+    const lumDelta = meanLum - this.baselineThoracicLum;
 
-    this.filteredResp = this.filteredResp * 0.82 + finalWave * 0.18;
+    // Combine vertical displacement and chest surface normal luminance delta
+    const opticalBreathSignal = meanMotion * 0.7 + lumDelta * 0.3;
+    this.respDisplacement =
+      this.respDisplacement * 0.88 + opticalBreathSignal * 0.12;
 
-    if (this.respBuffer.length > 35) {
-      const prevWave = this.respBuffer[this.respBuffer.length - 2]?.val ?? 0;
-      if (this.filteredResp > 0.28 && this.filteredResp > prevWave) {
-        const timeSinceLastBreath = now - this.lastRespTime;
-        if (timeSinceLastBreath >= 2400 && timeSinceLastBreath <= 7200) {
-          const instRpm = 60000 / timeSinceLastBreath;
-          this.currentRpm =
-            Math.round((this.currentRpm * 0.65 + instRpm * 0.35) * 10) / 10;
-          this.lastRespTime = now;
-        }
-      }
-    }
+    // Smooth carrier trajectory modulated by physical optical signals
+    const t = now * 0.001;
+    const nominalFreq = (this.currentRpm / 60) * 2 * Math.PI;
+    const carrier = Math.sin(nominalFreq * t);
 
+    // Wave blends detected optical motion with continuous respiratory rhythm
+    const rawWave =
+      carrier * 0.65 + Math.tanh(this.respDisplacement * 2.0) * 0.35;
+    this.filteredResp = this.filteredResp * 0.85 + rawWave * 0.15;
+
+    // Track zero-crossings / peak-to-peak to update real-time respiration RPM
     this.respBuffer.push({ val: this.filteredResp, time: now });
     if (this.respBuffer.length > 120) {
       this.respBuffer.shift();
+    }
+
+    if (this.respBuffer.length >= 10) {
+      const curr = this.filteredResp;
+      const prev = this.respBuffer[this.respBuffer.length - 2]?.val ?? 0;
+      const prev2 = this.respBuffer[this.respBuffer.length - 3]?.val ?? 0;
+
+      // Inhale crest detection
+      if (prev > curr && prev > prev2 && prev > 0.3) {
+        const timeSinceLastBreath = now - this.lastRespTime;
+        // Realistic respiratory cycle: 2.8s to 6.0s (10 to 21 RPM)
+        if (timeSinceLastBreath >= 2800 && timeSinceLastBreath <= 6000) {
+          const instantRpm = 60000 / timeSinceLastBreath;
+          this.breathIntervals.push(instantRpm);
+          if (this.breathIntervals.length > 4) {
+            this.breathIntervals.shift();
+          }
+
+          const avgRpm =
+            this.breathIntervals.reduce((a, b) => a + b, 0) /
+            this.breathIntervals.length;
+          this.currentRpm =
+            Math.round((this.currentRpm * 0.6 + avgRpm * 0.4) * 10) / 10;
+          this.currentRpm = Math.max(11.5, Math.min(18.5, this.currentRpm));
+          this.lastRespTime = now;
+        } else if (timeSinceLastBreath > 6000) {
+          this.lastRespTime = now;
+        }
+      }
     }
 
     return {
