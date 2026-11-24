@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Navbar from "./components/Navbar";
 import ConsentGateModal from "./components/ConsentGateModal";
+import FaceCalibrationModal from "./components/FaceCalibrationModal";
 import VitalsHUD from "./components/VitalsHUD";
 import CameraPreviewHUD from "./components/CameraPreviewHUD";
 import WaveformVisualizer from "./components/WaveformVisualizer";
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Cpu,
   Activity,
+  Scan,
 } from "lucide-react";
 
 export default function App() {
@@ -22,6 +24,8 @@ export default function App() {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [isConsentGranted, setIsConsentGranted] = useState(false);
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
+  const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
+  const [calibratedProfile, setCalibratedProfile] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isHumanDetected, setIsHumanDetected] = useState(false);
 
@@ -220,6 +224,26 @@ export default function App() {
       setIsConsentModalOpen(true);
       return;
     }
+
+    // If head morphology has not been calibrated yet, prompt the 5-second calibration scan popup
+    if (!calibratedProfile) {
+      setIsCalibrationModalOpen(true);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/session/start", { method: "POST" });
+      if (res.ok) {
+        setIsSessionActive(true);
+      }
+    } catch (e) {
+      console.error("Start session error:", e);
+    }
+  };
+
+  const handleCalibrationComplete = async (profile) => {
+    setCalibratedProfile(profile);
+    // Auto-start session once user confirms calibrated head profile
     try {
       const res = await fetch("/api/session/start", { method: "POST" });
       if (res.ok) {
@@ -315,6 +339,18 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+            {/* Scan Head Calibration Button */}
+            <button
+              onClick={() => setIsCalibrationModalOpen(true)}
+              className="px-3 py-2 rounded-xl border border-cyan-700/60 bg-cyan-950/60 hover:bg-cyan-900/60 text-xs font-semibold text-cyan-300 flex items-center space-x-1.5 transition-colors shadow-sm"
+              title="Calibrate your custom head size and ratio"
+            >
+              <Scan className="h-4 w-4 text-cyan-400" />
+              <span>
+                {calibratedProfile ? "Recalibrate Head" : "Scan Head (5s)"}
+              </span>
+            </button>
+
             {isSessionActive ? (
               <button
                 onClick={handleStopSession}
@@ -356,6 +392,8 @@ export default function App() {
             <CameraPreviewHUD
               isConsentGranted={isConsentGranted}
               isSessionActive={isSessionActive}
+              calibratedProfile={calibratedProfile}
+              onOpenCalibration={() => setIsCalibrationModalOpen(true)}
               onOpticalTelemetry={handleOpticalTelemetry}
             />
           </div>
@@ -411,6 +449,13 @@ export default function App() {
         onGrantConsent={handleGrantConsent}
         onRevokeConsent={handleRevokeConsent}
         isConsentGranted={isConsentGranted}
+      />
+
+      {/* 5-Second Face & Head Morphological Calibration Modal */}
+      <FaceCalibrationModal
+        isOpen={isCalibrationModalOpen}
+        onClose={() => setIsCalibrationModalOpen(false)}
+        onCalibrationComplete={handleCalibrationComplete}
       />
     </div>
   );

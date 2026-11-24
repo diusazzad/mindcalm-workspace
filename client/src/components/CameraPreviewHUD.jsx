@@ -16,6 +16,8 @@ import { OpticalEngine } from "../services/opticalEngine";
 export default function CameraPreviewHUD({
   isConsentGranted,
   isSessionActive,
+  calibratedProfile,
+  onOpenCalibration,
   onOpticalTelemetry,
 }) {
   const videoRef = useRef(null);
@@ -202,6 +204,14 @@ export default function CameraPreviewHUD({
     }
   }, [stream]);
 
+  // Dynamic custom silhouette size based on user's calibrated head ratio
+  const customGuideWidth = calibratedProfile?.headWidthPx
+    ? Math.min(180, Math.max(130, calibratedProfile.headWidthPx))
+    : 150;
+  const customGuideHeight = calibratedProfile?.headHeightPx
+    ? Math.min(230, Math.max(170, calibratedProfile.headHeightPx))
+    : 195;
+
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-xl flex flex-col justify-between">
       <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
@@ -212,6 +222,16 @@ export default function CameraPreviewHUD({
           </h3>
         </div>
         <div className="flex items-center space-x-2">
+          {/* Scan Head Calibration Trigger Button */}
+          <button
+            onClick={onOpenCalibration}
+            className="flex items-center space-x-1 text-[10px] font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-700/60 hover:bg-cyan-900/80 px-2 py-0.5 rounded-full transition-colors"
+            title="Open 5-Second Head Scan Calibration"
+          >
+            <Scan className="h-3 w-3 text-cyan-400" />
+            <span>{calibratedProfile ? "Recalibrate Head" : "Scan Head"}</span>
+          </button>
+
           {stream && (
             <span
               className={`flex items-center space-x-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
@@ -227,15 +247,10 @@ export default function CameraPreviewHUD({
                     : "bg-rose-400"
                 }`}
               />
-              <span>
-                {opticalStats.isAligned
-                  ? opticalStats.isCalibrated
-                    ? "30 FPS CALIBRATED"
-                    : `CALIBRATING ${opticalStats.calibrationProgress}%`
-                  : "ALIGNMENT ALERT"}
-              </span>
+              <span>{opticalStats.isAligned ? "LOCKED" : "ALIGN ALERT"}</span>
             </span>
           )}
+
           {isSessionActive && (
             <button
               onClick={() => setIsMutedVideo(!isMutedVideo)}
@@ -274,9 +289,7 @@ export default function CameraPreviewHUD({
             <div
               className={`flex justify-between items-center text-[10px] font-mono backdrop-blur-sm px-2.5 py-1 rounded-lg border shadow-lg transition-colors duration-200 ${
                 opticalStats.isAligned
-                  ? opticalStats.isCalibrated
-                    ? "bg-slate-950/80 border-emerald-600/60"
-                    : "bg-slate-950/80 border-cyan-500/60"
+                  ? "bg-slate-950/80 border-emerald-600/60"
                   : "bg-rose-950/80 border-rose-500/80 shadow-rose-950/50"
               }`}
             >
@@ -296,37 +309,32 @@ export default function CameraPreviewHUD({
                   }`}
                 >
                   {opticalStats.isAligned
-                    ? opticalStats.isCalibrated
-                      ? "FACE & NECK LOCKED • READY TO BREATHE"
-                      : `SCANNING BIOMETRIC PROFILE (${opticalStats.calibrationProgress}%)`
-                    : "ALERT: FACE & NECK NOT IN GUIDE"}
+                    ? "HEAD & NECK LOCKED • READY TO BREATHE"
+                    : "ALERT: FIT HEAD IN SCANNED GUIDE"}
                 </span>
               </div>
               <span className="text-slate-400 font-mono">
-                {opticalStats.isAligned
-                  ? "rPPG OPTICAL ACTIVE"
-                  : "ALIGN HEAD & NECK"}
+                {calibratedProfile
+                  ? `RATIO: ${calibratedProfile.headRatio}`
+                  : "30Hz OPTICAL"}
               </span>
             </div>
 
             {/* Central Anatomical Target Silhouette (Head + Neck Guide) */}
             <div className="relative w-full h-full my-auto flex items-center justify-center">
               {opticalStats.isAligned ? (
-                /* Aligned Head + Neck Silhouette Guide */
+                /* Aligned Head + Neck Silhouette Guide scaled to user's head */
                 <div className="relative flex flex-col items-center justify-center">
-                  {/* Scanning Laser Beam (Visible during calibration) */}
-                  {!opticalStats.isCalibrated && (
-                    <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-pulse shadow-[0_0_12px_#06b6d4] z-20" />
-                  )}
-
-                  {/* 1. Head Oval */}
+                  {/* Head Oval Custom-Sized */}
                   <div
-                    className={`w-38 h-48 sm:w-40 sm:h-50 border-2 rounded-full transition-all duration-200 flex flex-col items-center justify-between py-2 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
-                      !opticalStats.isCalibrated
-                        ? "border-cyan-400/80 border-dashed"
-                        : blinkFlash
-                          ? "border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)]"
-                          : "border-emerald-400"
+                    style={{
+                      width: `${customGuideWidth}px`,
+                      height: `${customGuideHeight}px`,
+                    }}
+                    className={`border-2 rounded-full transition-all duration-200 flex flex-col items-center justify-between py-2 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
+                      blinkFlash
+                        ? "border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)]"
+                        : "border-emerald-400"
                     }`}
                   >
                     {/* Forehead rPPG Region */}
@@ -368,34 +376,30 @@ export default function CameraPreviewHUD({
                     </div>
                   </div>
 
-                  {/* 2. Neck & Clavicle Guide (ঘাড় গাইড) */}
+                  {/* Neck & Clavicle Guide (ঘাড় গাইড) */}
                   <div className="w-20 h-10 -mt-2 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center">
                     <span className="text-[7px] font-mono text-emerald-300 font-semibold tracking-wider">
                       NECK / THORACIC
                     </span>
                   </div>
 
-                  {/* Calibration Prompt Badge */}
-                  {!opticalStats.isCalibrated ? (
-                    <div className="absolute -bottom-6 bg-cyan-950/90 text-cyan-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-cyan-500/50 flex items-center space-x-1 shadow-lg">
-                      <Scan className="h-3 w-3 animate-spin text-cyan-400" />
-                      <span>
-                        FITTING CUSTOM MORPHOLOGY:{" "}
-                        {opticalStats.calibrationProgress}%
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="absolute -bottom-6 bg-emerald-950/90 text-emerald-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-emerald-500/50 flex items-center space-x-1 shadow-lg">
-                      <CheckCircle className="h-3 w-3 text-emerald-400" />
-                      <span>READY • BREATHE WITH PACER</span>
-                    </div>
-                  )}
+                  {/* Ready Cue Badge */}
+                  <div className="absolute -bottom-6 bg-emerald-950/90 text-emerald-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-emerald-500/50 flex items-center space-x-1 shadow-lg">
+                    <CheckCircle className="h-3 w-3 text-emerald-400" />
+                    <span>READY • BREATHE WITH PACER</span>
+                  </div>
                 </div>
               ) : (
                 /* Red Alert Silhouette Guide: Head & Neck Out of Bounds */
                 <div className="relative flex flex-col items-center justify-center animate-pulse">
                   {/* Head Oval Out of Guide */}
-                  <div className="w-44 h-54 border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(244,63,94,0.6)]">
+                  <div
+                    style={{
+                      width: `${customGuideWidth + 10}px`,
+                      height: `${customGuideHeight + 10}px`,
+                    }}
+                    className="border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(244,63,94,0.6)]"
+                  >
                     <AlertTriangle className="h-9 w-9 text-rose-400 mb-1.5 animate-bounce" />
                     <span className="text-[11px] text-rose-300 font-mono font-extrabold text-center tracking-wide">
                       ALIGNMENT ALERT
@@ -475,7 +479,7 @@ export default function CameraPreviewHUD({
           <span>Zero Video Recording Guarantee</span>
         </span>
         <span className="text-cyan-400 font-mono">
-          Adaptive Morphology rPPG
+          Custom Morphological Mesh
         </span>
       </div>
     </div>
