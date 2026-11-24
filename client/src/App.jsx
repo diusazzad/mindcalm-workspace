@@ -23,6 +23,7 @@ export default function App() {
   const [isConsentGranted, setIsConsentGranted] = useState(false);
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isHumanDetected, setIsHumanDetected] = useState(false);
 
   // Vitals State
   const [vitals, setVitals] = useState({
@@ -30,7 +31,7 @@ export default function App() {
     pulse_confidence: 88,
     hrv_rmssd_ms: 45.2,
     respiration_rpm: 14.5,
-    blink_rate_cpm: 18,
+    blink_rate_cpm: 16,
     blinks_total: 0,
     cognitive_state: "CALM_FLOW",
     eye_strain_risk: false,
@@ -93,12 +94,12 @@ export default function App() {
           const d = msg.data;
           const v = d.vitals || {};
 
-          // Check if camera optical processing is currently actively supplying live metrics
+          // Check if camera optical processing is currently active
           const isOpticalActive =
-            Date.now() - lastOpticalTimeRef.current < 1500;
+            Date.now() - lastOpticalTimeRef.current < 2000;
 
-          if (!isOpticalActive) {
-            // Fallback to server simulation if camera is idle, off, or muted
+          if (!isOpticalActive && !isSessionActive) {
+            // Standby / inactive session fallback
             const ppgVal = d.ppgWave ?? d.ppg_wave;
             const respVal = d.respWave ?? d.resp_wave;
 
@@ -130,7 +131,7 @@ export default function App() {
               is_talking: v.isTalking ?? d.is_talking ?? prev.is_talking,
             }));
           } else {
-            // When optical is active, sync server autonomic tone (HRV) without overriding optical signals
+            // When optical is running, sync only autonomic tone (HRV RMSSD) from background
             setVitals((prev) => ({
               ...prev,
               hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
@@ -147,47 +148,60 @@ export default function App() {
     return () => {
       socket.close();
     };
-  }, []);
+  }, [isSessionActive]);
 
   // Optical Telemetry Callback from CameraPreviewHUD
   const handleOpticalTelemetry = useCallback((telemetry) => {
-    if (!telemetry || !telemetry.faceDetected) return;
+    if (!telemetry) return;
     lastOpticalTimeRef.current = Date.now();
 
-    // Real optical waveform streams
-    if (typeof telemetry.ppgWave === "number") {
-      setPpgHistory((prev) => [...prev.slice(-119), telemetry.ppgWave]);
-    }
-    if (typeof telemetry.respWave === "number") {
-      setRespHistory((prev) => [...prev.slice(-119), telemetry.respWave]);
-    }
+    const hasFace = Boolean(telemetry.faceDetected);
+    setIsHumanDetected(hasFace);
 
-    // Real optical vitals update
-    setVitals((prev) => {
-      let cognitive = prev.cognitive_state;
-      if (telemetry.blinkRateCpm < 11 || telemetry.respirationRpm > 20) {
-        cognitive = "COGNITIVE_STRAIN";
-      } else if (
-        telemetry.respirationRpm <= 15 &&
-        telemetry.blinkRateCpm >= 14
-      ) {
-        cognitive = "CALM_FLOW";
-      } else {
-        cognitive = "DEEP_FOCUS";
+    if (hasFace) {
+      // 1. Real optical waveforms (30Hz real-time)
+      if (typeof telemetry.ppgWave === "number") {
+        setPpgHistory((prev) => [...prev.slice(-119), telemetry.ppgWave]);
+      }
+      if (typeof telemetry.respWave === "number") {
+        setRespHistory((prev) => [...prev.slice(-119), telemetry.respWave]);
       }
 
-      return {
-        ...prev,
-        pulse_bpm: telemetry.pulseBpm || prev.pulse_bpm,
-        pulse_confidence: telemetry.pulseConfidence || 88,
-        respiration_rpm: telemetry.respirationRpm || prev.respiration_rpm,
-        blink_rate_cpm: telemetry.blinkRateCpm,
-        blinks_total: telemetry.totalBlinks,
-        is_talking: telemetry.isTalking,
-        eye_strain_risk: telemetry.blinkRateCpm < 12,
-        cognitive_state: cognitive,
-      };
-    });
+      // 2. Real optical vitals update
+      setVitals((prev) => {
+        let cognitive = prev.cognitive_state;
+        if (
+          telemetry.blinkRateCpm < 11 ||
+          (telemetry.respirationRpm && telemetry.respirationRpm > 20)
+        ) {
+          cognitive = "COGNITIVE_STRAIN";
+        } else if (
+          telemetry.respirationRpm &&
+          telemetry.respirationRpm <= 15 &&
+          telemetry.blinkRateCpm >= 14
+        ) {
+          cognitive = "CALM_FLOW";
+        } else {
+          cognitive = "DEEP_FOCUS";
+        }
+
+        return {
+          ...prev,
+          pulse_bpm: telemetry.pulseBpm || prev.pulse_bpm,
+          pulse_confidence: telemetry.pulseConfidence || 88,
+          respiration_rpm: telemetry.respirationRpm || prev.respiration_rpm,
+          blink_rate_cpm: telemetry.blinkRateCpm,
+          blinks_total: telemetry.totalBlinks,
+          is_talking: telemetry.isTalking,
+          eye_strain_risk: telemetry.blinkRateCpm < 12,
+          cognitive_state: cognitive,
+        };
+      });
+    } else {
+      // No human detected: clear waveforms so no fake graph is rendered
+      setPpgHistory([]);
+      setRespHistory([]);
+    }
   }, []);
 
   const handleGrantConsent = async () => {
@@ -212,6 +226,9 @@ export default function App() {
       });
       setIsConsentGranted(false);
       setIsSessionActive(false);
+      setIsHumanDetected(false);
+      setPpgHistory([]);
+      setRespHistory([]);
     } catch (e) {
       console.error("Revoke consent failed:", e);
     }
@@ -237,6 +254,9 @@ export default function App() {
       const res = await fetch("/api/session/stop", { method: "POST" });
       if (res.ok) {
         setIsSessionActive(false);
+        setIsHumanDetected(false);
+        setPpgHistory([]);
+        setRespHistory([]);
       }
     } catch (e) {
       console.error("Stop session error:", e);
@@ -248,6 +268,7 @@ export default function App() {
       await fetch("/api/session/reset", { method: "POST" });
       setPpgHistory([]);
       setRespHistory([]);
+      setIsHumanDetected(false);
       setVitals((prev) => ({
         ...prev,
         blinks_total: 0,
@@ -328,7 +349,11 @@ export default function App() {
         </div>
 
         {/* Real-time Physiological Vitals Cards */}
-        <VitalsHUD vitals={vitals} isSessionActive={isSessionActive} />
+        <VitalsHUD
+          vitals={vitals}
+          isSessionActive={isSessionActive}
+          isHumanDetected={isHumanDetected}
+        />
 
         {/* Center Grid: SmartSpectra Optical Viewport (Left) & Dual-Waveform Visualizer (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -344,6 +369,8 @@ export default function App() {
               ppgHistory={ppgHistory}
               respHistory={respHistory}
               isConnected={isConnected}
+              isSessionActive={isSessionActive}
+              isHumanDetected={isHumanDetected}
             />
           </div>
         </div>
@@ -351,7 +378,11 @@ export default function App() {
         {/* Lower Ergonomic Grid: Box Breathing Pacer (Left) & Adaptive Soundscape (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           <div className="lg:col-span-7 flex flex-col">
-            <BoxBreathingPacer userRespirationRate={vitals.respiration_rpm} />
+            <BoxBreathingPacer
+              userRespirationRate={
+                isHumanDetected ? vitals.respiration_rpm : 14.0
+              }
+            />
           </div>
           <div className="lg:col-span-5 flex flex-col">
             <SoundscapeController

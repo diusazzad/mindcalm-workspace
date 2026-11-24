@@ -6,7 +6,7 @@ import {
   Eye,
   Brain,
   AlertCircle,
-  ShieldAlert,
+  UserX,
   CheckCircle,
 } from "lucide-react";
 
@@ -32,16 +32,33 @@ const STATE_CONFIG = {
     dot: "bg-amber-400",
     ring: "border-amber-500/30",
   },
+  NO_HUMAN: {
+    label: "No Human Detected",
+    description:
+      "Optical telemetry awaiting subject. Position face in front of camera viewport.",
+    badge: "bg-amber-950/70 text-amber-300 border-amber-600/70",
+    dot: "bg-amber-400",
+    ring: "border-amber-500/30",
+  },
 };
 
-export default function VitalsHUD({ vitals, isSessionActive }) {
+export default function VitalsHUD({
+  vitals,
+  isSessionActive,
+  isHumanDetected = true,
+}) {
   const pulseBpm = vitals?.pulse_bpm ?? 0;
   const pulseConfidence = vitals?.pulse_confidence ?? 0;
   const hrvRmssd = vitals?.hrv_rmssd_ms ?? 0;
   const respirationRpm = vitals?.respiration_rpm ?? 0;
   const blinkRate = vitals?.blink_rate_cpm ?? 0;
   const blinksTotal = vitals?.blinks_total ?? vitals?.blinksTotal ?? 0;
-  const cognitiveStateKey = vitals?.cognitive_state || "CALM_FLOW";
+
+  const isNoHuman = isSessionActive && !isHumanDetected;
+
+  const cognitiveStateKey = isNoHuman
+    ? "NO_HUMAN"
+    : vitals?.cognitive_state || "CALM_FLOW";
   const stateMeta = STATE_CONFIG[cognitiveStateKey] || STATE_CONFIG.CALM_FLOW;
   const isEyeStrainRisk = vitals?.eye_strain_risk ?? false;
   const isFaceTalking = vitals?.is_talking ?? false;
@@ -51,8 +68,18 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
       {/* Top Banner: Cognitive State & Ergonomic Warning */}
       <div className="p-4 rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center space-x-3.5 w-full md:w-auto">
-          <div className="h-11 w-11 rounded-xl bg-gradient-to-tr from-cyan-600/20 to-emerald-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0">
-            <Brain className="h-6 w-6" />
+          <div
+            className={`h-11 w-11 rounded-xl border flex items-center justify-center flex-shrink-0 transition-colors ${
+              isNoHuman
+                ? "bg-amber-950/40 border-amber-600/50 text-amber-400"
+                : "bg-gradient-to-tr from-cyan-600/20 to-emerald-600/20 border-cyan-500/30 text-cyan-400"
+            }`}
+          >
+            {isNoHuman ? (
+              <UserX className="h-6 w-6 animate-pulse" />
+            ) : (
+              <Brain className="h-6 w-6" />
+            )}
           </div>
           <div>
             <div className="flex items-center space-x-2">
@@ -74,16 +101,19 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
           </div>
         </div>
 
-        {/* Eye Strain Alert & Talking Indicator */}
+        {/* Eye Strain Alert / Talking Indicator / Human Presence Badge */}
         <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
-          {isFaceTalking && (
+          {isNoHuman ? (
+            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-600/60 text-amber-300 text-xs font-semibold animate-pulse">
+              <UserX className="h-4 w-4 text-amber-400" />
+              <span>Seeking Optical Face Lock...</span>
+            </div>
+          ) : isFaceTalking ? (
             <div className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-indigo-950/60 border border-indigo-700/50 text-indigo-300 text-xs">
               <span className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
               <span>Vocal Motion (Vitals Gated)</span>
             </div>
-          )}
-
-          {isEyeStrainRisk ? (
+          ) : isEyeStrainRisk ? (
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-600/60 text-amber-300 text-xs font-medium animate-pulse">
               <AlertCircle className="h-4 w-4 text-amber-400" />
               <span>Low Blink Rate (Computer Vision Syndrome Risk)</span>
@@ -97,40 +127,61 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
         </div>
       </div>
 
-      {/* 4 Core Physiological Telemetry Cards with Clean English Explanations */}
+      {/* 4 Core Physiological Telemetry Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Pulse BPM */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-rose-500/40 transition-colors flex flex-col justify-between">
+        <div
+          className={`p-4 rounded-2xl bg-slate-900/90 border shadow-lg relative overflow-hidden transition-colors flex flex-col justify-between ${
+            isNoHuman
+              ? "border-amber-900/40"
+              : "border-slate-800 hover:border-rose-500/40"
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 font-mono mb-1">
               <span className="flex items-center space-x-1.5 text-rose-400">
-                <Heart className="h-4 w-4 animate-pulse" />
+                <Heart
+                  className={`h-4 w-4 ${isNoHuman ? "opacity-50" : "animate-pulse"}`}
+                />
                 <span>PULSE RATE</span>
               </span>
               <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                Conf: {pulseConfidence}%
+                {isNoHuman ? "Seeking" : `Conf: ${pulseConfidence}%`}
               </span>
             </div>
-            {/* Clean English explanatory bracket */}
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
               (Heart rate beats per minute measured via camera rPPG optical
               flow)
             </p>
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-extrabold text-white tracking-tight font-mono">
-                {pulseBpm > 0 ? pulseBpm : "--"}
+                {isNoHuman || pulseBpm <= 0 ? "--" : pulseBpm}
               </span>
               <span className="text-sm font-semibold text-rose-400">BPM</span>
             </div>
           </div>
           <div className="mt-3 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800">
             <span>Presage PPG Optical</span>
-            <span className="text-emerald-400 font-medium">Stable</span>
+            <span
+              className={
+                isNoHuman
+                  ? "text-amber-400 font-medium"
+                  : "text-emerald-400 font-medium"
+              }
+            >
+              {isNoHuman ? "No Human Detected" : "Stable"}
+            </span>
           </div>
         </div>
 
         {/* 2. HRV RMSSD */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-cyan-500/40 transition-colors flex flex-col justify-between">
+        <div
+          className={`p-4 rounded-2xl bg-slate-900/90 border shadow-lg relative overflow-hidden transition-colors flex flex-col justify-between ${
+            isNoHuman
+              ? "border-amber-900/40"
+              : "border-slate-800 hover:border-cyan-500/40"
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 font-mono mb-1">
               <span className="flex items-center space-x-1.5 text-cyan-400">
@@ -141,26 +192,39 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
                 RMSSD
               </span>
             </div>
-            {/* Clean English explanatory bracket */}
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
               (Autonomic tone & stress index — higher ms indicates
               parasympathetic calm)
             </p>
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-extrabold text-white tracking-tight font-mono">
-                {hrvRmssd > 0 ? hrvRmssd.toFixed(1) : "--"}
+                {isNoHuman || hrvRmssd <= 0 ? "--" : hrvRmssd.toFixed(1)}
               </span>
               <span className="text-sm font-semibold text-cyan-400">ms</span>
             </div>
           </div>
           <div className="mt-3 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800">
             <span>Autonomic Tone</span>
-            <span className="text-cyan-300 font-mono">Para/Symp</span>
+            <span
+              className={
+                isNoHuman
+                  ? "text-amber-400 font-medium font-mono text-[11px]"
+                  : "text-cyan-300 font-mono"
+              }
+            >
+              {isNoHuman ? "Seeking Face ROI" : "Para/Symp"}
+            </span>
           </div>
         </div>
 
         {/* 3. Respiration RPM */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-emerald-500/40 transition-colors flex flex-col justify-between">
+        <div
+          className={`p-4 rounded-2xl bg-slate-900/90 border shadow-lg relative overflow-hidden transition-colors flex flex-col justify-between ${
+            isNoHuman
+              ? "border-amber-900/40"
+              : "border-slate-800 hover:border-emerald-500/40"
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 font-mono mb-1">
               <span className="flex items-center space-x-1.5 text-emerald-400">
@@ -171,14 +235,15 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
                 Thoracic
               </span>
             </div>
-            {/* Clean English explanatory bracket */}
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
               (Thoracic respiratory frequency — normal baseline is 12 to 18
               breaths/min)
             </p>
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-extrabold text-white tracking-tight font-mono">
-                {respirationRpm > 0 ? respirationRpm.toFixed(1) : "--"}
+                {isNoHuman || respirationRpm <= 0
+                  ? "--"
+                  : respirationRpm.toFixed(1)}
               </span>
               <span className="text-sm font-semibold text-emerald-400">
                 RPM
@@ -187,14 +252,30 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
           </div>
           <div className="mt-3 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800">
             <span>Breathing Pace</span>
-            <span className="text-emerald-300 font-mono">
-              {respirationRpm < 10 ? "Deep" : "Standard"}
+            <span
+              className={
+                isNoHuman
+                  ? "text-amber-400 font-medium"
+                  : "text-emerald-300 font-mono"
+              }
+            >
+              {isNoHuman
+                ? "No Human Detected"
+                : respirationRpm < 10
+                  ? "Deep"
+                  : "Standard"}
             </span>
           </div>
         </div>
 
         {/* 4. Blink Rate & Real-Time Ocular Counter */}
-        <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-amber-500/40 transition-colors flex flex-col justify-between">
+        <div
+          className={`p-4 rounded-2xl bg-slate-900/90 border shadow-lg relative overflow-hidden transition-colors flex flex-col justify-between ${
+            isNoHuman
+              ? "border-amber-900/40"
+              : "border-slate-800 hover:border-amber-500/40"
+          }`}
+        >
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 font-mono mb-1">
               <span className="flex items-center space-x-1.5 text-amber-400">
@@ -205,14 +286,13 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
                 Total: {blinksTotal}
               </span>
             </div>
-            {/* Clean English explanatory bracket */}
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
               (Eye hydration rate — values under 12 indicate visual fatigue &
               dry eye risk)
             </p>
             <div className="flex items-baseline space-x-2">
               <span className="text-3xl font-extrabold text-white tracking-tight font-mono">
-                {blinkRate}
+                {isNoHuman ? "--" : blinkRate}
               </span>
               <span className="text-sm font-semibold text-amber-400">
                 blinks/min
@@ -225,12 +305,18 @@ export default function VitalsHUD({ vitals, isSessionActive }) {
             </span>
             <span
               className={
-                isEyeStrainRisk
-                  ? "text-amber-400 font-semibold"
-                  : "text-emerald-400"
+                isNoHuman
+                  ? "text-amber-400 font-medium"
+                  : isEyeStrainRisk
+                    ? "text-amber-400 font-semibold"
+                    : "text-emerald-400"
               }
             >
-              {isEyeStrainRisk ? "Fatigue Detected" : "Optimal"}
+              {isNoHuman
+                ? "Subject Out of Frame"
+                : isEyeStrainRisk
+                  ? "Fatigue Detected"
+                  : "Optimal"}
             </span>
           </div>
         </div>

@@ -1,22 +1,30 @@
-import React, { useRef, useEffect } from 'react';
-import { Activity, Wind } from 'lucide-react';
+import React, { useRef, useEffect } from "react";
+import { Activity, Wind } from "lucide-react";
 
-export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], isConnected }) {
+export default function WaveformVisualizer({
+  ppgHistory = [],
+  respHistory = [],
+  isConnected,
+  isSessionActive,
+  isHumanDetected = true,
+}) {
   const ppgCanvasRef = useRef(null);
   const respCanvasRef = useRef(null);
+
+  const isNoHuman = isSessionActive && !isHumanDetected;
 
   // Render PPG Canvas (Pulse Waveform)
   useEffect(() => {
     const canvas = ppgCanvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     const width = canvas.width;
     const height = canvas.height;
 
     ctx.clearRect(0, 0, width, height);
 
     // Grid lines
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = "#1e293b";
     ctx.lineWidth = 1;
     for (let x = 0; x < width; x += 40) {
       ctx.beginPath();
@@ -31,18 +39,33 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
       ctx.stroke();
     }
 
+    if (isNoHuman) {
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "12px monospace";
+      ctx.fillText(
+        "Optical Lock Lost — No human detected in camera viewport",
+        20,
+        height / 2,
+      );
+      return;
+    }
+
     if (!ppgHistory.length || !isConnected) {
-      ctx.fillStyle = '#64748b';
-      ctx.font = '12px monospace';
-      ctx.fillText('Awaiting 30Hz optical PPG telemetry stream...', 20, height / 2);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "12px monospace";
+      ctx.fillText(
+        "Awaiting 30Hz optical PPG telemetry stream...",
+        20,
+        height / 2,
+      );
       return;
     }
 
     // Draw PPG line
     ctx.beginPath();
-    ctx.strokeStyle = '#06b6d4'; // Cyan
+    ctx.strokeStyle = "#06b6d4"; // Cyan
     ctx.lineWidth = 2;
-    ctx.shadowColor = '#06b6d4';
+    ctx.shadowColor = "#06b6d4";
     ctx.shadowBlur = 8;
 
     const step = width / Math.max(ppgHistory.length - 1, 1);
@@ -55,20 +78,20 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
     });
     ctx.stroke();
     ctx.shadowBlur = 0;
-  }, [ppgHistory, isConnected]);
+  }, [ppgHistory, isConnected, isNoHuman]);
 
   // Render Respiration Canvas
   useEffect(() => {
     const canvas = respCanvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     const width = canvas.width;
     const height = canvas.height;
 
     ctx.clearRect(0, 0, width, height);
 
     // Grid lines
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = "#1e293b";
     ctx.lineWidth = 1;
     for (let x = 0; x < width; x += 40) {
       ctx.beginPath();
@@ -83,18 +106,29 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
       ctx.stroke();
     }
 
+    if (isNoHuman) {
+      ctx.fillStyle = "#f59e0b";
+      ctx.font = "12px monospace";
+      ctx.fillText(
+        "Awaiting thoracic motion — Position face & torso in reticle",
+        20,
+        height / 2,
+      );
+      return;
+    }
+
     if (!respHistory.length || !isConnected) {
-      ctx.fillStyle = '#64748b';
-      ctx.font = '12px monospace';
-      ctx.fillText('Awaiting thoracic respiration wave...', 20, height / 2);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "12px monospace";
+      ctx.fillText("Awaiting thoracic respiration wave...", 20, height / 2);
       return;
     }
 
     // Draw Respiration line
     ctx.beginPath();
-    ctx.strokeStyle = '#10b981'; // Emerald
+    ctx.strokeStyle = "#10b981"; // Emerald
     ctx.lineWidth = 2.5;
-    ctx.shadowColor = '#10b981';
+    ctx.shadowColor = "#10b981";
     ctx.shadowBlur = 8;
 
     const step = width / Math.max(respHistory.length - 1, 1);
@@ -106,7 +140,7 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
     });
     ctx.stroke();
     ctx.shadowBlur = 0;
-  }, [respHistory, isConnected]);
+  }, [respHistory, isConnected, isNoHuman]);
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl space-y-5">
@@ -130,7 +164,9 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
               <span className="h-2 w-2 rounded-full bg-cyan-400" />
               <span>Photoplethysmography (PPG Pulse Wave)</span>
             </span>
-            <span className="text-[11px] font-mono text-slate-500">Normal Range: ±1.0</span>
+            <span className="text-[11px] font-mono text-slate-500">
+              Normal Range: ±1.0
+            </span>
           </div>
           <div className="w-full overflow-hidden rounded-lg bg-slate-900/70 border border-slate-800">
             <canvas
@@ -149,7 +185,9 @@ export default function WaveformVisualizer({ ppgHistory = [], respHistory = [], 
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
               <span>Thoracic Expansion (Respiration Cycle)</span>
             </span>
-            <span className="text-[11px] font-mono text-slate-500">Inhale / Exhale Trajectory</span>
+            <span className="text-[11px] font-mono text-slate-500">
+              Inhale / Exhale Trajectory
+            </span>
           </div>
           <div className="w-full overflow-hidden rounded-lg bg-slate-900/70 border border-slate-800">
             <canvas
