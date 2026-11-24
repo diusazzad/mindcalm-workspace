@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Navbar from "./components/Navbar";
 import ConsentGateModal from "./components/ConsentGateModal";
 import VitalsHUD from "./components/VitalsHUD";
@@ -42,6 +42,7 @@ export default function App() {
   const [respHistory, setRespHistory] = useState([]);
 
   const wsRef = useRef(null);
+  const lastOpticalTimeRef = useRef(0);
 
   // Check consent status on mount
   useEffect(() => {
@@ -92,36 +93,49 @@ export default function App() {
           const d = msg.data;
           const v = d.vitals || {};
 
-          // Extract waveform samples (support both camelCase and snake_case)
-          const ppgVal = d.ppgWave ?? d.ppg_wave;
-          const respVal = d.respWave ?? d.resp_wave;
+          // Check if camera optical processing is currently actively supplying live metrics
+          const isOpticalActive =
+            Date.now() - lastOpticalTimeRef.current < 1500;
 
-          if (typeof ppgVal === "number") {
-            setPpgHistory((prev) => [...prev.slice(-119), ppgVal]);
-          }
-          if (typeof respVal === "number") {
-            setRespHistory((prev) => [...prev.slice(-119), respVal]);
-          }
+          if (!isOpticalActive) {
+            // Fallback to server simulation if camera is idle, off, or muted
+            const ppgVal = d.ppgWave ?? d.ppg_wave;
+            const respVal = d.respWave ?? d.resp_wave;
 
-          // Update vitals (support both nested vitals object and direct keys)
-          setVitals((prev) => ({
-            ...prev,
-            pulse_bpm: v.pulseBpm ?? d.pulse_bpm ?? prev.pulse_bpm,
-            pulse_confidence:
-              v.pulseConfidence ?? d.pulse_confidence ?? prev.pulse_confidence,
-            hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
-            respiration_rpm:
-              v.respirationRpm ?? d.respiration_rpm ?? prev.respiration_rpm,
-            blink_rate_cpm:
-              v.blinkRatePerMin ?? d.blink_rate_cpm ?? prev.blink_rate_cpm,
-            blinks_total:
-              v.blinksTotal ?? d.blinks_total ?? prev.blinks_total ?? 0,
-            cognitive_state:
-              v.cognitiveState ?? d.cognitive_state ?? prev.cognitive_state,
-            eye_strain_risk:
-              v.eyeStrainRisk ?? d.eye_strain_risk ?? prev.eye_strain_risk,
-            is_talking: v.isTalking ?? d.is_talking ?? prev.is_talking,
-          }));
+            if (typeof ppgVal === "number") {
+              setPpgHistory((prev) => [...prev.slice(-119), ppgVal]);
+            }
+            if (typeof respVal === "number") {
+              setRespHistory((prev) => [...prev.slice(-119), respVal]);
+            }
+
+            setVitals((prev) => ({
+              ...prev,
+              pulse_bpm: v.pulseBpm ?? d.pulse_bpm ?? prev.pulse_bpm,
+              pulse_confidence:
+                v.pulseConfidence ??
+                d.pulse_confidence ??
+                prev.pulse_confidence,
+              hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
+              respiration_rpm:
+                v.respirationRpm ?? d.respiration_rpm ?? prev.respiration_rpm,
+              blink_rate_cpm:
+                v.blinkRatePerMin ?? d.blink_rate_cpm ?? prev.blink_rate_cpm,
+              blinks_total:
+                v.blinksTotal ?? d.blinks_total ?? prev.blinks_total ?? 0,
+              cognitive_state:
+                v.cognitiveState ?? d.cognitive_state ?? prev.cognitive_state,
+              eye_strain_risk:
+                v.eyeStrainRisk ?? d.eye_strain_risk ?? prev.eye_strain_risk,
+              is_talking: v.isTalking ?? d.is_talking ?? prev.is_talking,
+            }));
+          } else {
+            // When optical is active, sync server autonomic tone (HRV) without overriding optical signals
+            setVitals((prev) => ({
+              ...prev,
+              hrv_rmssd_ms: v.hrvRmssdMs ?? d.hrv_rmssd_ms ?? prev.hrv_rmssd_ms,
+            }));
+          }
         } else if (msg.type === "session_state") {
           setIsSessionActive(!!msg.is_running);
         }
@@ -133,6 +147,47 @@ export default function App() {
     return () => {
       socket.close();
     };
+  }, []);
+
+  // Optical Telemetry Callback from CameraPreviewHUD
+  const handleOpticalTelemetry = useCallback((telemetry) => {
+    if (!telemetry || !telemetry.faceDetected) return;
+    lastOpticalTimeRef.current = Date.now();
+
+    // Real optical waveform streams
+    if (typeof telemetry.ppgWave === "number") {
+      setPpgHistory((prev) => [...prev.slice(-119), telemetry.ppgWave]);
+    }
+    if (typeof telemetry.respWave === "number") {
+      setRespHistory((prev) => [...prev.slice(-119), telemetry.respWave]);
+    }
+
+    // Real optical vitals update
+    setVitals((prev) => {
+      let cognitive = prev.cognitive_state;
+      if (telemetry.blinkRateCpm < 11 || telemetry.respirationRpm > 20) {
+        cognitive = "COGNITIVE_STRAIN";
+      } else if (
+        telemetry.respirationRpm <= 15 &&
+        telemetry.blinkRateCpm >= 14
+      ) {
+        cognitive = "CALM_FLOW";
+      } else {
+        cognitive = "DEEP_FOCUS";
+      }
+
+      return {
+        ...prev,
+        pulse_bpm: telemetry.pulseBpm || prev.pulse_bpm,
+        pulse_confidence: telemetry.pulseConfidence || 88,
+        respiration_rpm: telemetry.respirationRpm || prev.respiration_rpm,
+        blink_rate_cpm: telemetry.blinkRateCpm,
+        blinks_total: telemetry.totalBlinks,
+        is_talking: telemetry.isTalking,
+        eye_strain_risk: telemetry.blinkRateCpm < 12,
+        cognitive_state: cognitive,
+      };
+    });
   }, []);
 
   const handleGrantConsent = async () => {
@@ -193,6 +248,11 @@ export default function App() {
       await fetch("/api/session/reset", { method: "POST" });
       setPpgHistory([]);
       setRespHistory([]);
+      setVitals((prev) => ({
+        ...prev,
+        blinks_total: 0,
+        blink_rate_cpm: 16,
+      }));
     } catch (e) {
       console.error("Reset session error:", e);
     }
@@ -276,6 +336,7 @@ export default function App() {
             <CameraPreviewHUD
               isConsentGranted={isConsentGranted}
               isSessionActive={isSessionActive}
+              onOpticalTelemetry={handleOpticalTelemetry}
             />
           </div>
           <div className="lg:col-span-8 flex flex-col">
