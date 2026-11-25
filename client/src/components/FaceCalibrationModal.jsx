@@ -8,6 +8,8 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  Eye,
+  Target,
 } from "lucide-react";
 
 export default function FaceCalibrationModal({
@@ -32,6 +34,7 @@ export default function FaceCalibrationModal({
     headRatio: 0,
     headWidthPx: 0,
     headHeightPx: 0,
+    shoulderSpan: 0,
     eyeLevelPct: 35,
     mouthLevelPct: 72,
     neckLevelPct: 95,
@@ -43,6 +46,7 @@ export default function FaceCalibrationModal({
     ratios: [],
     widths: [],
     heights: [],
+    shoulders: [],
     eyeLevels: [],
     mouthLevels: [],
     neckLevels: [],
@@ -62,6 +66,7 @@ export default function FaceCalibrationModal({
         ratios: [],
         widths: [],
         heights: [],
+        shoulders: [],
         eyeLevels: [],
         mouthLevels: [],
         neckLevels: [],
@@ -114,7 +119,7 @@ export default function FaceCalibrationModal({
     };
   }, [isOpen]);
 
-  // Frame processing loop for head detection
+  // Frame processing loop for head & shoulder detection
   useEffect(() => {
     if (!isOpen || !stream) return;
 
@@ -135,7 +140,7 @@ export default function FaceCalibrationModal({
             const frameData = ctx.getImageData(0, 0, 320, 240);
             const pixels = frameData.data;
 
-            // Skin chrominance scan to locate head bounds with shoulder-flare rejection
+            // Skin chrominance scan to locate head and shoulder bounds
             const rowStats = {};
             let totalSkin = 0;
 
@@ -167,7 +172,7 @@ export default function FaceCalibrationModal({
               }
             }
 
-            const faceFound = totalSkin > 150;
+            const faceFound = totalSkin > 140;
             if (faceFound) {
               // 1. Top of head
               let headTopY = 240;
@@ -211,12 +216,29 @@ export default function FaceCalibrationModal({
               );
               const headH = Math.round(headW * boundedRatio);
 
+              // 3. Scan shoulder rows
+              let minShoulderX = 320;
+              let maxShoulderX = 0;
+              for (let y = chinY; y < 235; y += 4) {
+                if (rowStats[y]?.count >= 3) {
+                  if (rowStats[y].minX < minShoulderX)
+                    minShoulderX = rowStats[y].minX;
+                  if (rowStats[y].maxX > maxShoulderX)
+                    maxShoulderX = rowStats[y].maxX;
+                }
+              }
+              const shoulderSpan = Math.max(
+                Math.round(headW * 2.2),
+                maxShoulderX - minShoulderX,
+              );
+
               setMetrics((prev) => ({
                 ...prev,
                 faceDetected: true,
                 headRatio: boundedRatio,
                 headWidthPx: headW,
                 headHeightPx: headH,
+                shoulderSpan,
                 eyeLevelPct: 35,
                 mouthLevelPct: 72,
                 neckLevelPct: 95,
@@ -228,6 +250,7 @@ export default function FaceCalibrationModal({
                 acc.ratios.push(boundedRatio);
                 acc.widths.push(headW);
                 acc.heights.push(headH);
+                acc.shoulders.push(shoulderSpan);
               }
             } else {
               setMetrics((prev) => ({ ...prev, faceDetected: false }));
@@ -279,6 +302,7 @@ export default function FaceCalibrationModal({
       ratios: [],
       widths: [],
       heights: [],
+      shoulders: [],
       eyeLevels: [],
       mouthLevels: [],
       neckLevels: [],
@@ -304,6 +328,10 @@ export default function FaceCalibrationModal({
       acc.heights.length > 0
         ? acc.heights.reduce((a, b) => a + b, 0) / acc.heights.length
         : 160;
+    const avgShoulder =
+      acc.shoulders.length > 0
+        ? acc.shoulders.reduce((a, b) => a + b, 0) / acc.shoulders.length
+        : 260;
 
     const clampedRatio = Math.max(
       1.25,
@@ -315,6 +343,7 @@ export default function FaceCalibrationModal({
       headRatio: clampedRatio,
       headWidthPx: Math.round(avgWidth),
       headHeightPx: Math.round(avgWidth * clampedRatio),
+      shoulderSpan: Math.round(avgShoulder),
       eyeLevelPct: 35,
       mouthLevelPct: 72,
       neckLevelPct: 95,
@@ -327,6 +356,7 @@ export default function FaceCalibrationModal({
         headRatio: metrics.headRatio || 1.35,
         headWidthPx: metrics.headWidthPx || 120,
         headHeightPx: metrics.headHeightPx || 162,
+        shoulderSpan: metrics.shoulderSpan || 260,
         eyeLevelPct: 35,
         mouthLevelPct: 72,
         neckLevelPct: 95,
@@ -340,8 +370,8 @@ export default function FaceCalibrationModal({
   // Dynamic Guide Oval Sizing (scales in real-time with user's detected head size)
   const modalGuideW =
     metrics.faceDetected && metrics.headWidthPx
-      ? Math.round(Math.min(250, Math.max(130, metrics.headWidthPx * 1.25)))
-      : 176;
+      ? Math.round(Math.min(210, Math.max(125, metrics.headWidthPx * 1.15)))
+      : 155;
   const modalGuideH = Math.round(modalGuideW * (metrics.headRatio || 1.35));
 
   return (
@@ -355,11 +385,11 @@ export default function FaceCalibrationModal({
             </div>
             <div>
               <h3 className="font-bold text-sm sm:text-base text-white">
-                Biometric Head Calibration & Morphological Scan
+                Biometric Head & Shoulder Calibration (Full Scan)
               </h3>
               <p className="text-xs text-slate-400">
-                Measures your personal head size, eye plane & neck ratio (5
-                Seconds)
+                Maps head ratio, eye symbols, nose airflow apex & shoulder span
+                (5 Seconds)
               </p>
             </div>
           </div>
@@ -382,88 +412,150 @@ export default function FaceCalibrationModal({
               className="w-full h-full object-cover transform -scale-x-100"
             />
 
-            {/* Scanning Guide Silhouette */}
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center select-none p-4">
+            {/* Scanning Guide Silhouette Covering Full Upper Body */}
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-end select-none p-3 pb-1">
               {/* Central Head Alignment Silhouette - Scaled Dynamically */}
-              <div
-                style={{
-                  width: `${modalGuideW}px`,
-                  height: `${modalGuideH}px`,
-                }}
-                className={`border-2 border-dashed rounded-full flex flex-col items-center justify-between py-3 transition-all duration-200 ${
-                  isScanSuccess
-                    ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.5)]"
-                    : isScanning
-                      ? "border-cyan-400 bg-cyan-500/10 shadow-[0_0_25px_rgba(6,182,212,0.5)]"
-                      : metrics.faceDetected
-                        ? "border-emerald-400/80 bg-emerald-950/20"
-                        : "border-slate-500/50 bg-slate-900/30"
-                }`}
-              >
-                {/* Horizontal Scanning Laser Bar */}
-                {isScanning && (
-                  <div className="absolute inset-x-8 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse shadow-[0_0_15px_#22d3ee]" />
-                )}
+              <div className="relative w-full flex flex-col items-center justify-end">
+                <div
+                  style={{
+                    width: `${modalGuideW}px`,
+                    height: `${modalGuideH}px`,
+                  }}
+                  className={`border-2 border-dashed rounded-full flex flex-col items-center justify-between py-2.5 transition-all duration-200 ${
+                    isScanSuccess
+                      ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.5)]"
+                      : isScanning
+                        ? "border-cyan-400 bg-cyan-500/10 shadow-[0_0_25px_rgba(6,182,212,0.5)]"
+                        : metrics.faceDetected
+                          ? "border-emerald-400/80 bg-emerald-950/20"
+                          : "border-slate-500/50 bg-slate-900/30"
+                  }`}
+                >
+                  {/* Horizontal Scanning Laser Bar */}
+                  {isScanning && (
+                    <div className="absolute inset-x-8 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse shadow-[0_0_15px_#22d3ee]" />
+                  )}
 
-                <div className="text-[9px] font-mono font-bold text-cyan-300 bg-slate-950/80 px-2 py-0.5 rounded border border-cyan-800/60">
-                  TOP OF HEAD
+                  <div className="text-[8.5px] font-mono font-bold text-cyan-300 bg-slate-950/80 px-2 py-0.5 rounded border border-cyan-800/60">
+                    TOP OF HEAD
+                  </div>
+
+                  {/* Eye Symbols inside Scanner */}
+                  <div className="w-full flex justify-around items-center px-2">
+                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400/80 bg-cyan-950/60 text-cyan-300 text-[7px] font-mono shadow-sm">
+                      <Eye className="h-3 w-3 text-cyan-400" />
+                      <span>EYE-L</span>
+                    </div>
+                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400/80 bg-cyan-950/60 text-cyan-300 text-[7px] font-mono shadow-sm">
+                      <Eye className="h-3 w-3 text-cyan-400" />
+                      <span>EYE-R</span>
+                    </div>
+                  </div>
+
+                  {/* Nose Airflow Marker inside Scanner */}
+                  <div className="flex flex-col items-center justify-center -my-0.5">
+                    <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/60">
+                      <Target
+                        className="h-3.5 w-3.5 text-cyan-300 animate-spin"
+                        style={{ animationDuration: "8s" }}
+                      />
+                    </div>
+                    <span className="text-[6.5px] font-mono text-cyan-300 bg-slate-950/90 px-1 py-0.2 rounded border border-cyan-700/60 mt-0.5 font-bold">
+                      NOSE APEX
+                    </span>
+                  </div>
+
+                  {isScanSuccess ? (
+                    <div className="flex flex-col items-center space-y-1 bg-slate-950/90 px-3 py-1 rounded-lg border border-emerald-500/60">
+                      <CheckCircle className="h-5 w-5 text-emerald-400" />
+                      <span className="text-[9.5px] font-bold text-emerald-300 font-mono">
+                        SCAN COMPLETE!
+                      </span>
+                    </div>
+                  ) : isScanning ? (
+                    <div className="bg-slate-950/90 px-2.5 py-1 rounded-lg border border-cyan-500/60 flex flex-col items-center space-y-0.5">
+                      <span className="text-[11px] font-bold font-mono text-cyan-300">
+                        SCANNING: {scanSecondsLeft}s
+                      </span>
+                      <span className="text-[8.5px] text-slate-400 font-mono">
+                        HOLD STEADY
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-[9px] text-slate-300 font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-slate-700">
+                      {metrics.faceDetected
+                        ? "FACE ALIGNED • CLICK START"
+                        : "FIT IN FRAME"}
+                    </span>
+                  )}
+
+                  <div className="text-[8px] font-mono text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-700">
+                    CHIN & JAWLINE
+                  </div>
                 </div>
 
-                {isScanSuccess ? (
-                  <div className="flex flex-col items-center space-y-1 bg-slate-950/90 px-3 py-1 rounded-lg border border-emerald-500/60">
-                    <CheckCircle className="h-6 w-6 text-emerald-400" />
-                    <span className="text-[10px] font-bold text-emerald-300 font-mono">
-                      CALIBRATION COMPLETE!
-                    </span>
-                  </div>
-                ) : isScanning ? (
-                  <div className="bg-slate-950/90 px-3 py-1.5 rounded-lg border border-cyan-500/60 flex flex-col items-center space-y-1">
-                    <span className="text-xs font-bold font-mono text-cyan-300">
-                      SCANNING: {scanSecondsLeft}s
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-mono">
-                      HOLD HEAD STEADY
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-[10px] text-slate-300 font-mono bg-slate-950/80 px-2.5 py-1 rounded border border-slate-700">
-                    {metrics.faceDetected
-                      ? "FACE IN VIEW • CLICK START SCAN"
-                      : "POSITION HEAD IN CIRCLE"}
+                {/* Neck Column */}
+                <div
+                  style={{ width: `${Math.round(modalGuideW * 0.52)}px` }}
+                  className="h-7 -mt-2 border-x-2 border-b-2 border-cyan-400/70 bg-cyan-950/20 rounded-b-xl flex items-center justify-center z-10"
+                >
+                  <span className="text-[6.5px] font-mono text-cyan-300">
+                    NECK / CLAVICLE
                   </span>
-                )}
+                </div>
 
-                <div className="text-[9px] font-mono text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-700">
-                  CHIN & NECK BASE
+                {/* Full Shoulder Span Wings in Scanner */}
+                <div className="w-full flex justify-between items-center -mt-3 px-1 pointer-events-none z-0">
+                  <div className="flex-1 h-8 border-t-2 border-l-2 border-dashed rounded-tl-3xl border-cyan-400/80 bg-cyan-950/30 flex items-center pl-2">
+                    <span className="text-[7px] font-mono text-cyan-300 font-bold bg-slate-950/90 px-1 py-0.5 rounded border border-cyan-600/50">
+                      SHOULDER-L
+                    </span>
+                  </div>
+                  <div className="w-16 h-6 border-x-2 border-b-2 border-dashed rounded-b-lg border-cyan-400/80 bg-cyan-950/30 flex items-center justify-center">
+                    <span className="text-[6px] font-mono text-cyan-300">
+                      CHEST
+                    </span>
+                  </div>
+                  <div className="flex-1 h-8 border-t-2 border-r-2 border-dashed rounded-tr-3xl border-cyan-400/80 bg-cyan-950/30 flex items-center justify-end pr-2">
+                    <span className="text-[7px] font-mono text-cyan-300 font-bold bg-slate-950/90 px-1 py-0.5 rounded border border-cyan-600/50">
+                      SHOULDER-R
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Morphological Scan Metrics Feedback */}
-          <div className="grid grid-cols-3 gap-3 text-center text-xs font-mono">
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">
-                Head Ratio (H/W)
+          <div className="grid grid-cols-4 gap-2 text-center text-xs font-mono">
+            <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-400 block text-[9.5px]">
+                Head Ratio
               </span>
-              <span className="text-cyan-300 font-bold text-sm">
+              <span className="text-cyan-300 font-bold text-xs">
                 {metrics.headRatio > 0 ? metrics.headRatio : "--"}
               </span>
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">
-                Eye Plane
+            <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-400 block text-[9.5px]">
+                Eye & Nose
               </span>
-              <span className="text-emerald-300 font-bold text-sm">
-                {metrics.faceDetected ? "Aligned" : "--"}
+              <span className="text-emerald-300 font-bold text-xs">
+                {metrics.faceDetected ? "Tracking" : "--"}
               </span>
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-              <span className="text-slate-400 block text-[10px]">
-                Scan Status
+            <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-400 block text-[9.5px]">
+                Shoulders
               </span>
+              <span className="text-cyan-300 font-bold text-xs">
+                {metrics.shoulderSpan > 0 ? `${metrics.shoulderSpan}px` : "--"}
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span className="text-slate-400 block text-[9.5px]">Status</span>
               <span
-                className={`font-bold text-sm ${
+                className={`font-bold text-xs ${
                   isScanSuccess
                     ? "text-emerald-400"
                     : isScanning
@@ -472,7 +564,7 @@ export default function FaceCalibrationModal({
                 }`}
               >
                 {isScanSuccess
-                  ? "100% Ready"
+                  ? "Ready"
                   : isScanning
                     ? `${scanProgress}%`
                     : "Awaiting"}
@@ -511,7 +603,7 @@ export default function FaceCalibrationModal({
                 <span>
                   {isScanning
                     ? `Scanning (${scanSecondsLeft}s Left)...`
-                    : "Start 5-Second Head Scan"}
+                    : "Start 5-Second Head & Shoulder Scan"}
                 </span>
               </button>
             ) : (
@@ -533,7 +625,7 @@ export default function FaceCalibrationModal({
             <span>100% Ephemeral in RAM • Zero Imagery Stored</span>
           </span>
           <span className="font-mono text-cyan-400 text-[10px]">
-            Presage Morphological Profile
+            Presage Full-Torso Profile
           </span>
         </div>
       </div>

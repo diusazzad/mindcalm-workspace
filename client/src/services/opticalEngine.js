@@ -3,12 +3,13 @@
  *
  * Biomedical Features:
  * 1. Adaptive Morphological Calibration: Isolates genuine craniofacial head
- *    profile from bare shoulders/torso, calculating accurate cephalic ratio (1.25 - 1.45).
- * 2. Dynamic Reticle Scaling: Live tracking of face distance and scale in camera.
- * 3. Z-Score Forehead rPPG: Smooth tanh-saturation waveform (no flat plateaus)
+ *    profile, nasal airflow apex, neck, and anatomical shoulder wings.
+ * 2. Full Upper-Body Torso Guidance: Head, Eyes, Nose, Mouth, Neck & Shoulders.
+ * 3. Dynamic Reticle Scaling: Live tracking of face distance, scale, and shoulder span.
+ * 4. Z-Score Forehead rPPG: Smooth tanh-saturation waveform (no flat plateaus)
  *    and rolling median IBI systolic peak detector for accurate resting BPM (65 - 85).
- * 4. High-Precision Bilateral Eye Blink Tracking: Dynamic rolling blinks/min rate.
- * 5. Thoracic & Neck Expansion Tracking: Modulated respiration trajectory & live RPM.
+ * 5. High-Precision Bilateral Eye Blink Tracking: Dynamic rolling blinks/min rate.
+ * 6. Thoracic & Neck Expansion Tracking: Modulated respiration trajectory & live RPM.
  *
  * Privacy: 100% Ephemeral in volatile browser RAM. Zero video storage.
  */
@@ -27,6 +28,7 @@ export class OpticalEngine {
     this.calibrationFrames = 0;
     this.calibratedFace = null;
     this.calibratedNeck = null;
+    this.calibratedShoulders = null;
 
     // Pulse & PPG Buffers
     this.ppgBuffer = [];
@@ -69,6 +71,7 @@ export class OpticalEngine {
     this.calibrationFrames = 0;
     this.calibratedFace = null;
     this.calibratedNeck = null;
+    this.calibratedShoulders = null;
     this.totalBlinks = 0;
     this.blinkTimestamps = [];
     this.lastBlinkTime = 0;
@@ -117,21 +120,21 @@ export class OpticalEngine {
 
     const pixels = frameData.data;
 
-    // 1. Morphological Skin & Anatomical Detection (Isolating Head from Shoulders)
+    // 1. Morphological Skin & Anatomical Detection (Head, Neck, Torso & Shoulders)
     const morph = this._detectMorphology(pixels, width, height);
 
     if (morph.detected) {
       this.consecutiveMissedFrames = 0;
       this.faceDetected = true;
 
-      // Center alignment check (ensure face and neck are centered in guide circle)
+      // Center alignment check (ensure face and torso are centered in guide frame)
       const centerX = width / 2;
-      const centerY = height * 0.45;
+      const centerY = height * 0.44;
       const distFromCenter = Math.hypot(morph.cx - centerX, morph.cy - centerY);
 
-      // Aligned if within 28% of viewport center
+      // Aligned if within 30% of viewport center and reasonable size
       this.isAligned =
-        distFromCenter < width * 0.28 && morph.faceW > width * 0.18;
+        distFromCenter < width * 0.3 && morph.faceW > width * 0.17;
 
       // Calibration accumulation (45 frames ≈ 1.5 seconds)
       if (this.isAligned && !this.isCalibrated) {
@@ -139,8 +142,9 @@ export class OpticalEngine {
         if (!this.calibratedFace) {
           this.calibratedFace = { ...morph.faceBox };
           this.calibratedNeck = { ...morph.neckBox };
+          this.calibratedShoulders = { ...morph.shoulders };
         } else {
-          // Smooth running average of user's personal face geometry
+          // Smooth running average of user's personal body geometry
           this.calibratedFace.x = Math.round(
             this.calibratedFace.x * 0.85 + morph.faceBox.x * 0.15,
           );
@@ -166,6 +170,21 @@ export class OpticalEngine {
           this.calibratedNeck.h = Math.round(
             this.calibratedNeck.h * 0.85 + morph.neckBox.h * 0.15,
           );
+
+          if (this.calibratedShoulders && morph.shoulders) {
+            this.calibratedShoulders.span = Math.round(
+              this.calibratedShoulders.span * 0.85 +
+                morph.shoulders.span * 0.15,
+            );
+            this.calibratedShoulders.leftX = Math.round(
+              this.calibratedShoulders.leftX * 0.85 +
+                morph.shoulders.leftX * 0.15,
+            );
+            this.calibratedShoulders.rightX = Math.round(
+              this.calibratedShoulders.rightX * 0.85 +
+                morph.shoulders.rightX * 0.15,
+            );
+          }
         }
 
         if (this.calibrationFrames >= 45) {
@@ -210,6 +229,7 @@ export class OpticalEngine {
     // Adaptive Personalized ROIs derived from calibrated geometry
     const fb = this.calibratedFace || morph.faceBox;
     const nb = this.calibratedNeck || morph.neckBox;
+    const sb = this.calibratedShoulders || morph.shoulders;
 
     // 1. Forehead ROI for rPPG Green Channel
     const foreheadRoi = {
@@ -221,19 +241,33 @@ export class OpticalEngine {
 
     // 2. Eye ROIs for Blink Dynamics
     const leftEyeRoi = {
-      x: Math.floor(fb.x + fb.w * 0.15),
+      x: Math.floor(fb.x + fb.w * 0.14),
       y: Math.floor(fb.y + fb.h * 0.3),
       w: Math.floor(fb.w * 0.3),
       h: Math.floor(fb.h * 0.18),
+      cx: Math.floor(fb.x + fb.w * 0.29),
+      cy: Math.floor(fb.y + fb.h * 0.39),
     };
     const rightEyeRoi = {
-      x: Math.floor(fb.x + fb.w * 0.55),
+      x: Math.floor(fb.x + fb.w * 0.56),
       y: Math.floor(fb.y + fb.h * 0.3),
       w: Math.floor(fb.w * 0.3),
       h: Math.floor(fb.h * 0.18),
+      cx: Math.floor(fb.x + fb.w * 0.71),
+      cy: Math.floor(fb.y + fb.h * 0.39),
     };
 
-    // 3. Mouth ROI for speech & mouth movement
+    // 3. Nose Position ROI for Respiratory Airflow Target & Facial Symmetry
+    const noseRoi = {
+      x: Math.floor(fb.x + fb.w * 0.38),
+      y: Math.floor(fb.y + fb.h * 0.44),
+      w: Math.floor(fb.w * 0.24),
+      h: Math.floor(fb.h * 0.2),
+      cx: Math.floor(fb.x + fb.w * 0.5),
+      cy: Math.floor(fb.y + fb.h * 0.53),
+    };
+
+    // 4. Mouth ROI for speech & mouth movement
     const mouthRoi = {
       x: Math.floor(fb.x + fb.w * 0.26),
       y: Math.floor(fb.y + fb.h * 0.68),
@@ -241,7 +275,7 @@ export class OpticalEngine {
       h: Math.floor(fb.h * 0.22),
     };
 
-    // 4. Thoracic & Neck Expansion ROI for Respiration
+    // 5. Thoracic & Neck Expansion ROI for Respiration
     const thoracicRoi = {
       x: Math.floor(Math.max(0, nb.x - nb.w * 0.3)),
       y: Math.floor(nb.y),
@@ -296,8 +330,10 @@ export class OpticalEngine {
         forehead: foreheadRoi,
         leftEye: leftEyeRoi,
         rightEye: rightEyeRoi,
+        nose: noseRoi,
         mouth: mouthRoi,
         thoracic: thoracicRoi,
+        shoulders: sb,
       },
     };
   }
@@ -306,7 +342,7 @@ export class OpticalEngine {
 
   /**
    * Anatomical Morphology Extractor:
-   * Isolates genuine head/chin bounds from bare shoulders using row profiling.
+   * Isolates head, facial landmarks, neck, and full shoulder wings.
    */
   _detectMorphology(pixels, width, height) {
     const rowStats = {};
@@ -314,10 +350,10 @@ export class OpticalEngine {
     let sumX = 0;
     let sumY = 0;
 
-    const startX = Math.floor(width * 0.12);
-    const endX = Math.floor(width * 0.88);
-    const startY = Math.floor(height * 0.08);
-    const endY = Math.floor(height * 0.92);
+    const startX = Math.floor(width * 0.1);
+    const endX = Math.floor(width * 0.9);
+    const startY = Math.floor(height * 0.06);
+    const endY = Math.floor(height * 0.94);
 
     for (let y = startY; y < endY; y += 4) {
       rowStats[y] = { count: 0, minX: width, maxX: 0, sumX: 0 };
@@ -351,7 +387,7 @@ export class OpticalEngine {
       }
     }
 
-    if (totalSkin < 150) {
+    if (totalSkin < 140) {
       return { detected: false };
     }
 
@@ -414,6 +450,29 @@ export class OpticalEngine {
       h: Math.min(height - (faceBox.y + faceBox.h), Math.max(25, neckH)),
     };
 
+    // 3. Shoulder Span Calculation (Covering full torso down to bottom corners)
+    let minShoulderX = Math.max(0, Math.round(cx - faceW * 1.35));
+    let maxShoulderX = Math.min(width, Math.round(cx + faceW * 1.35));
+
+    for (let y = chinY; y < endY; y += 4) {
+      if (rowStats[y].count >= 3) {
+        if (rowStats[y].minX < minShoulderX) minShoulderX = rowStats[y].minX;
+        if (rowStats[y].maxX > maxShoulderX) maxShoulderX = rowStats[y].maxX;
+      }
+    }
+
+    const shoulderSpan = Math.max(
+      Math.round(faceW * 2.2),
+      maxShoulderX - minShoulderX,
+    );
+    const shoulders = {
+      span: Math.min(width, shoulderSpan),
+      leftX: Math.max(0, Math.round(cx - shoulderSpan * 0.5)),
+      rightX: Math.min(width, Math.round(cx + shoulderSpan * 0.5)),
+      y: Math.round(neckBox.y + neckBox.h * 0.4),
+      bottomY: height,
+    };
+
     return {
       detected: true,
       cx,
@@ -423,6 +482,7 @@ export class OpticalEngine {
       headRatio: ratio,
       faceBox,
       neckBox,
+      shoulders,
     };
   }
 
