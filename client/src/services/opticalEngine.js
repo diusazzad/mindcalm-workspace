@@ -3,8 +3,12 @@
  *
  * Biomedical Features:
  * 1. Adaptive Morphological Calibration: Isolates genuine craniofacial head
- *    profile, nasal airflow apex, neck, and anatomical shoulder wings.
- * 2. Full Upper-Body Torso Guidance: Head, Eyes, Nose, Mouth, Neck & Shoulders.
+ *    profile, nasal airflow apex, neck, and natural anatomical shoulder contours.
+ * 2. Anatomically Accurate Upper-Body Bust Guidance:
+ *    - Eyes: Center plane at ~48% of craniofacial height (with live pupil luminance tracking)
+ *    - Nose Apex: At ~65% of face height directly above philtrum/mouth
+ *    - Mouth / Speech: At ~82% of face height
+ *    - Trapezius Shoulders: Natural anatomical downward slope from neck base.
  * 3. Dynamic Reticle Scaling: Live tracking of face distance, scale, and shoulder span.
  * 4. Z-Score Forehead rPPG: Smooth tanh-saturation waveform (no flat plateaus)
  *    and rolling median IBI systolic peak detector for accurate resting BPM (65 - 85).
@@ -226,12 +230,12 @@ export class OpticalEngine {
       };
     }
 
-    // Adaptive Personalized ROIs derived from calibrated geometry
+    // Adaptive Personalized ROIs derived from anatomical head geometry
     const fb = this.calibratedFace || morph.faceBox;
     const nb = this.calibratedNeck || morph.neckBox;
     const sb = this.calibratedShoulders || morph.shoulders;
 
-    // 1. Forehead ROI for rPPG Green Channel
+    // 1. Forehead ROI for rPPG Green Channel (Upper 20% of face)
     const foreheadRoi = {
       x: Math.floor(fb.x + fb.w * 0.28),
       y: Math.floor(fb.y + fb.h * 0.08),
@@ -239,40 +243,44 @@ export class OpticalEngine {
       h: Math.floor(fb.h * 0.2),
     };
 
-    // 2. Eye ROIs for Blink Dynamics
+    // 2. Anatomical Eye ROIs (Accurately located at ~46%-48% of face height)
+    const eyeY = Math.floor(fb.y + fb.h * 0.42);
+    const eyeH = Math.floor(fb.h * 0.16);
     const leftEyeRoi = {
-      x: Math.floor(fb.x + fb.w * 0.14),
-      y: Math.floor(fb.y + fb.h * 0.3),
-      w: Math.floor(fb.w * 0.3),
-      h: Math.floor(fb.h * 0.18),
+      x: Math.floor(fb.x + fb.w * 0.13),
+      y: eyeY,
+      w: Math.floor(fb.w * 0.32),
+      h: eyeH,
       cx: Math.floor(fb.x + fb.w * 0.29),
-      cy: Math.floor(fb.y + fb.h * 0.39),
+      cy: Math.floor(eyeY + eyeH * 0.5),
     };
     const rightEyeRoi = {
-      x: Math.floor(fb.x + fb.w * 0.56),
-      y: Math.floor(fb.y + fb.h * 0.3),
-      w: Math.floor(fb.w * 0.3),
-      h: Math.floor(fb.h * 0.18),
+      x: Math.floor(fb.x + fb.w * 0.55),
+      y: eyeY,
+      w: Math.floor(fb.w * 0.32),
+      h: eyeH,
       cx: Math.floor(fb.x + fb.w * 0.71),
-      cy: Math.floor(fb.y + fb.h * 0.39),
+      cy: Math.floor(eyeY + eyeH * 0.5),
     };
 
-    // 3. Nose Position ROI for Respiratory Airflow Target & Facial Symmetry
+    // 3. Anatomical Nose ROI (Located at ~64%-67% of face height directly below eyes)
+    const noseY = Math.floor(fb.y + fb.h * 0.6);
+    const noseH = Math.floor(fb.h * 0.16);
     const noseRoi = {
-      x: Math.floor(fb.x + fb.w * 0.38),
-      y: Math.floor(fb.y + fb.h * 0.44),
-      w: Math.floor(fb.w * 0.24),
-      h: Math.floor(fb.h * 0.2),
+      x: Math.floor(fb.x + fb.w * 0.36),
+      y: noseY,
+      w: Math.floor(fb.w * 0.28),
+      h: noseH,
       cx: Math.floor(fb.x + fb.w * 0.5),
-      cy: Math.floor(fb.y + fb.h * 0.53),
+      cy: Math.floor(noseY + noseH * 0.5),
     };
 
-    // 4. Mouth ROI for speech & mouth movement
+    // 4. Mouth ROI for speech & mouth movement (Located at ~78%-85% of face height)
     const mouthRoi = {
       x: Math.floor(fb.x + fb.w * 0.26),
-      y: Math.floor(fb.y + fb.h * 0.68),
+      y: Math.floor(fb.y + fb.h * 0.78),
       w: Math.floor(fb.w * 0.48),
-      h: Math.floor(fb.h * 0.22),
+      h: Math.floor(fb.h * 0.18),
     };
 
     // 5. Thoracic & Neck Expansion ROI for Respiration

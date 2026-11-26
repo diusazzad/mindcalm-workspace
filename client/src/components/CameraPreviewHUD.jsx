@@ -302,7 +302,7 @@ export default function CameraPreviewHUD({
 
         {stream && !isMutedVideo ? (
           /* HUD Interactive Optical Vision Mesh Overlay */
-          <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3 select-none">
+          <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 select-none">
             {/* Top Status Bar */}
             <div
               className={`flex justify-between items-center text-[10px] font-mono backdrop-blur-sm px-2.5 py-1 rounded-lg border shadow-lg transition-colors duration-200 ${
@@ -340,36 +340,36 @@ export default function CameraPreviewHUD({
               </span>
             </div>
 
-            {/* Central Anatomical Target Silhouette (Head + Eyes + Nose + Neck + Full Shoulders) */}
-            <div className="relative w-full h-full my-auto flex flex-col items-center justify-end pb-1">
+            {/* Central Anatomical Target Silhouette with Anatomically Correct Features */}
+            <div className="relative w-full h-full my-auto flex flex-col items-center justify-end pb-0">
               {opticalStats.isAligned ? (
                 /* Aligned Head + Nose + Shoulders Silhouette Guide */
                 <div className="relative w-full flex flex-col items-center justify-end">
-                  {/* Head Oval Custom-Sized */}
+                  {/* Head Oval Custom-Sized with Absolute Coordinates */}
                   <div
                     style={{
                       width: `${customGuideWidth}px`,
                       height: `${customGuideHeight}px`,
                     }}
-                    className={`border-2 rounded-full transition-all duration-200 flex flex-col items-center justify-between py-2 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
+                    className={`relative border-2 rounded-full transition-all duration-200 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.4)] ${
                       blinkFlash
                         ? "border-amber-400 shadow-[0_0_25px_rgba(251,191,36,0.6)]"
                         : "border-emerald-400"
                     }`}
                   >
-                    {/* Forehead rPPG Region */}
-                    <div className="w-20 h-5 border border-emerald-400 bg-emerald-950/60 rounded flex items-center justify-center text-[7.5px] font-mono text-emerald-300 font-bold">
+                    {/* 1. Forehead rPPG Region (Top 2px) */}
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-5 border border-emerald-400 bg-emerald-950/70 rounded flex items-center justify-center text-[7.5px] font-mono text-emerald-300 font-bold z-10">
                       <span className="animate-pulse">FOREHEAD rPPG</span>
                     </div>
 
-                    {/* Bilateral Eye Symbols Reticle with Eyelid Contour & Iris */}
-                    <div className="w-full flex justify-around items-center px-2">
+                    {/* 2. Bilateral Eye Symbols Reticle (Accurately positioned at 46% - directly on real eyes) */}
+                    <div className="absolute top-[46%] left-0 right-0 -translate-y-1/2 flex justify-between px-2.5 z-10">
                       {/* Left Eye Symbol */}
                       <div
                         className={`flex items-center space-x-1 px-1.5 py-0.5 border rounded-full text-[7.5px] font-mono transition-all duration-150 ${
                           blinkFlash || opticalStats.isBlink
-                            ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_12px_#f59e0b]"
-                            : "border-cyan-400/80 bg-cyan-950/50 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
+                            ? "border-amber-400 bg-amber-500/50 text-amber-200 font-bold scale-110 shadow-[0_0_12px_#f59e0b]"
+                            : "border-cyan-400/90 bg-cyan-950/70 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
                         }`}
                       >
                         <Eye
@@ -390,8 +390,8 @@ export default function CameraPreviewHUD({
                       <div
                         className={`flex items-center space-x-1 px-1.5 py-0.5 border rounded-full text-[7.5px] font-mono transition-all duration-150 ${
                           blinkFlash || opticalStats.isBlink
-                            ? "border-amber-400 bg-amber-500/40 text-amber-200 font-bold scale-110 shadow-[0_0_12px_#f59e0b]"
-                            : "border-cyan-400/80 bg-cyan-950/50 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
+                            ? "border-amber-400 bg-amber-500/50 text-amber-200 font-bold scale-110 shadow-[0_0_12px_#f59e0b]"
+                            : "border-cyan-400/90 bg-cyan-950/70 text-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.4)]"
                         }`}
                       >
                         <Eye
@@ -409,70 +409,77 @@ export default function CameraPreviewHUD({
                       </div>
                     </div>
 
-                    {/* Precision Nose Position Marker & Airflow Crosshair */}
-                    <div className="flex flex-col items-center justify-center -my-0.5">
-                      <div className="relative flex items-center justify-center">
-                        <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/50 shadow-[0_0_10px_rgba(6,182,212,0.5)]">
-                          <Target
-                            className="h-3.5 w-3.5 text-cyan-300 animate-spin"
-                            style={{ animationDuration: "8s" }}
-                          />
-                        </div>
+                    {/* 3. Precision Nose Airflow Marker (Positioned at 64% - right over nasal apex) */}
+                    <div className="absolute top-[64%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center z-10">
+                      <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/80 shadow-[0_0_8px_rgba(6,182,212,0.6)]">
+                        <Target
+                          className="h-3.5 w-3.5 text-cyan-300 animate-spin"
+                          style={{ animationDuration: "8s" }}
+                        />
                       </div>
-                      <span className="text-[6.5px] font-mono text-cyan-300 bg-slate-950/90 px-1 py-0.2 rounded border border-cyan-700/60 mt-0.5 font-bold">
+                      <span className="text-[6.5px] font-mono text-cyan-300 bg-slate-950/90 px-1 py-0.2 rounded border border-cyan-700/60 mt-0.5 font-bold whitespace-nowrap">
                         NOSE / AIRFLOW
                       </span>
                     </div>
 
-                    {/* Mouth / Speech Motion Reticle */}
-                    <div
-                      className={`px-2 py-0.5 border rounded text-[7px] font-mono transition-all duration-150 ${
-                        opticalStats.isTalking
-                          ? "border-indigo-400 bg-indigo-950/80 text-indigo-200 font-bold shadow-[0_0_10px_#818cf8]"
-                          : "border-slate-500/50 bg-slate-900/50 text-slate-300"
-                      }`}
-                    >
-                      {opticalStats.isTalking ? "MOUTH OPEN" : "MOUTH REST"}
+                    {/* 4. Mouth / Speech Motion Reticle (Positioned at 80% over mouth) */}
+                    <div className="absolute top-[80%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 whitespace-nowrap">
+                      <div
+                        className={`px-2 py-0.5 border rounded text-[7px] font-mono transition-all duration-150 ${
+                          opticalStats.isTalking
+                            ? "border-indigo-400 bg-indigo-950/80 text-indigo-200 font-bold shadow-[0_0_10px_#818cf8]"
+                            : "border-slate-500/50 bg-slate-900/60 text-slate-300"
+                        }`}
+                      >
+                        {opticalStats.isTalking ? "MOUTH OPEN" : "MOUTH REST"}
+                      </div>
                     </div>
                   </div>
 
                   {/* Neck / Clavicle Guide (ঘাড় গাইড) */}
                   <div
                     style={{
-                      width: `${Math.round(customGuideWidth * 0.52)}px`,
+                      width: `${Math.round(customGuideWidth * 0.48)}px`,
                     }}
-                    className="h-8 -mt-2 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center z-10"
+                    className="h-6 -mt-1.5 border-x-2 border-b-2 border-emerald-400/70 bg-emerald-950/20 rounded-b-xl flex items-center justify-center z-10"
                   >
-                    <span className="text-[7px] font-mono text-emerald-300 font-semibold tracking-wider">
+                    <span className="text-[6.5px] font-mono text-emerald-300 font-semibold tracking-wider">
                       NECK / CLAVICLE
                     </span>
                   </div>
 
-                  {/* Left & Right Shoulder Wings (পুরো শোল্ডার গাইড উইং) */}
-                  <div className="w-full flex justify-between items-center -mt-3 px-1 pointer-events-none z-0">
-                    {/* Left Shoulder Slope */}
-                    <div className="flex-1 flex flex-col items-start pr-1">
-                      <div className="w-full h-9 border-t-2 border-l-2 rounded-tl-3xl border-emerald-400/80 bg-emerald-950/30 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center pl-2">
-                        <span className="text-[7px] font-mono text-emerald-300 font-bold bg-slate-950/90 px-1.5 py-0.5 rounded border border-emerald-500/60">
-                          SHOULDER-L
-                        </span>
-                      </div>
-                    </div>
+                  {/* Natural Sloping Trapezius Shoulders (Curved Wings) */}
+                  <div className="w-full relative -mt-3 pointer-events-none z-0 px-1">
+                    <svg
+                      className="w-full h-12 overflow-visible"
+                      viewBox="0 0 320 48"
+                      preserveAspectRatio="none"
+                    >
+                      {/* Left Shoulder Slope */}
+                      <path
+                        d="M 125 4 C 100 8, 45 22, 0 38"
+                        fill="none"
+                        stroke="rgba(16, 185, 129, 0.85)"
+                        strokeWidth="2.5"
+                      />
+                      {/* Right Shoulder Slope */}
+                      <path
+                        d="M 195 4 C 220 8, 275 22, 320 38"
+                        fill="none"
+                        stroke="rgba(16, 185, 129, 0.85)"
+                        strokeWidth="2.5"
+                      />
+                    </svg>
 
-                    {/* Central Thoracic / Sternum Anchor */}
-                    <div className="w-16 h-7 border-x-2 border-b-2 rounded-b-lg border-emerald-400/80 bg-emerald-950/40 flex items-center justify-center">
-                      <span className="text-[6.5px] font-mono text-emerald-300 font-bold">
-                        THORACIC
-                      </span>
+                    {/* Floating Shoulder Badges */}
+                    <div className="absolute left-2 bottom-2 bg-slate-950/90 text-emerald-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-emerald-500/60 shadow-md">
+                      SHOULDER-L
                     </div>
-
-                    {/* Right Shoulder Slope */}
-                    <div className="flex-1 flex flex-col items-end pl-1">
-                      <div className="w-full h-9 border-t-2 border-r-2 rounded-tr-3xl border-emerald-400/80 bg-emerald-950/30 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center justify-end pr-2">
-                        <span className="text-[7px] font-mono text-emerald-300 font-bold bg-slate-950/90 px-1.5 py-0.5 rounded border border-emerald-500/60">
-                          SHOULDER-R
-                        </span>
-                      </div>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-1 bg-emerald-950/80 text-emerald-300 text-[6.5px] font-mono font-bold px-2 py-0.5 rounded border border-emerald-600/60">
+                      THORACIC
+                    </div>
+                    <div className="absolute right-2 bottom-2 bg-slate-950/90 text-emerald-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-emerald-500/60 shadow-md">
+                      SHOULDER-R
                     </div>
                   </div>
 
@@ -491,7 +498,7 @@ export default function CameraPreviewHUD({
                       width: `${customGuideWidth + 10}px`,
                       height: `${customGuideHeight + 10}px`,
                     }}
-                    className="border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(244,63,94,0.6)]"
+                    className="relative border-2 border-dashed border-rose-500 bg-rose-950/30 rounded-full flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(244,63,94,0.6)]"
                   >
                     <AlertTriangle className="h-8 w-8 text-rose-400 mb-1 animate-bounce" />
                     <span className="text-[11px] text-rose-300 font-mono font-extrabold text-center tracking-wide">
@@ -505,27 +512,42 @@ export default function CameraPreviewHUD({
                   {/* Neck Guide Box */}
                   <div
                     style={{
-                      width: `${Math.round((customGuideWidth + 10) * 0.52)}px`,
+                      width: `${Math.round((customGuideWidth + 10) * 0.48)}px`,
                     }}
-                    className="h-8 -mt-2 border-x-2 border-b-2 border-dashed border-rose-500/70 bg-rose-950/20 rounded-b-xl flex items-center justify-center"
+                    className="h-6 -mt-1.5 border-x-2 border-b-2 border-dashed border-rose-500/70 bg-rose-950/20 rounded-b-xl flex items-center justify-center"
                   >
-                    <span className="text-[7px] font-mono text-rose-300">
+                    <span className="text-[6.5px] font-mono text-rose-300">
                       NECK BASE
                     </span>
                   </div>
 
                   {/* Shoulder Outline in Alert Mode */}
-                  <div className="w-full flex justify-between items-center -mt-3 px-1 pointer-events-none">
-                    <div className="flex-1 h-8 border-t-2 border-l-2 border-dashed rounded-tl-3xl border-rose-500/70 bg-rose-950/20 flex items-center pl-2">
-                      <span className="text-[7px] font-mono text-rose-300">
-                        SHOULDER-L
-                      </span>
+                  <div className="w-full relative -mt-3 pointer-events-none px-1">
+                    <svg
+                      className="w-full h-12 overflow-visible"
+                      viewBox="0 0 320 48"
+                      preserveAspectRatio="none"
+                    >
+                      <path
+                        d="M 125 4 C 100 8, 45 22, 0 38"
+                        fill="none"
+                        stroke="rgba(244, 63, 94, 0.8)"
+                        strokeWidth="2.5"
+                        strokeDasharray="5 3"
+                      />
+                      <path
+                        d="M 195 4 C 220 8, 275 22, 320 38"
+                        fill="none"
+                        stroke="rgba(244, 63, 94, 0.8)"
+                        strokeWidth="2.5"
+                        strokeDasharray="5 3"
+                      />
+                    </svg>
+                    <div className="absolute left-2 bottom-2 bg-slate-950/90 text-rose-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-rose-500/60">
+                      SHOULDER-L
                     </div>
-                    <div className="w-16 h-6 border-x-2 border-b-2 border-dashed rounded-b-lg border-rose-500/70 bg-rose-950/20" />
-                    <div className="flex-1 h-8 border-t-2 border-r-2 border-dashed rounded-tr-3xl border-rose-500/70 bg-rose-950/20 flex items-center justify-end pr-2">
-                      <span className="text-[7px] font-mono text-rose-300">
-                        SHOULDER-R
-                      </span>
+                    <div className="absolute right-2 bottom-2 bg-slate-950/90 text-rose-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-rose-500/60">
+                      SHOULDER-R
                     </div>
                   </div>
                 </div>

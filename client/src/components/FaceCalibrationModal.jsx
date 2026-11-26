@@ -35,9 +35,10 @@ export default function FaceCalibrationModal({
     headWidthPx: 0,
     headHeightPx: 0,
     shoulderSpan: 0,
-    eyeLevelPct: 35,
-    mouthLevelPct: 72,
-    neckLevelPct: 95,
+    eyeLevelPct: 46,
+    noseLevelPct: 64,
+    mouthLevelPct: 80,
+    neckLevelPct: 96,
   });
 
   const animRef = useRef(null);
@@ -239,9 +240,10 @@ export default function FaceCalibrationModal({
                 headWidthPx: headW,
                 headHeightPx: headH,
                 shoulderSpan,
-                eyeLevelPct: 35,
-                mouthLevelPct: 72,
-                neckLevelPct: 95,
+                eyeLevelPct: 46,
+                noseLevelPct: 64,
+                mouthLevelPct: 80,
+                neckLevelPct: 96,
               }));
 
               if (isScanning && !isScanSuccess) {
@@ -344,9 +346,10 @@ export default function FaceCalibrationModal({
       headWidthPx: Math.round(avgWidth),
       headHeightPx: Math.round(avgWidth * clampedRatio),
       shoulderSpan: Math.round(avgShoulder),
-      eyeLevelPct: 35,
-      mouthLevelPct: 72,
-      neckLevelPct: 95,
+      eyeLevelPct: 46,
+      noseLevelPct: 64,
+      mouthLevelPct: 80,
+      neckLevelPct: 96,
     });
   };
 
@@ -357,9 +360,10 @@ export default function FaceCalibrationModal({
         headWidthPx: metrics.headWidthPx || 120,
         headHeightPx: metrics.headHeightPx || 162,
         shoulderSpan: metrics.shoulderSpan || 260,
-        eyeLevelPct: 35,
-        mouthLevelPct: 72,
-        neckLevelPct: 95,
+        eyeLevelPct: 46,
+        noseLevelPct: 64,
+        mouthLevelPct: 80,
+        neckLevelPct: 96,
       });
     }
     onClose();
@@ -388,7 +392,7 @@ export default function FaceCalibrationModal({
                 Biometric Head & Shoulder Calibration (Full Scan)
               </h3>
               <p className="text-xs text-slate-400">
-                Maps head ratio, eye symbols, nose airflow apex & shoulder span
+                Maps head ratio, eye plane, nose airflow apex & shoulder slope
                 (5 Seconds)
               </p>
             </div>
@@ -413,15 +417,15 @@ export default function FaceCalibrationModal({
             />
 
             {/* Scanning Guide Silhouette Covering Full Upper Body */}
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-end select-none p-3 pb-1">
-              {/* Central Head Alignment Silhouette - Scaled Dynamically */}
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-end select-none p-2 pb-0">
               <div className="relative w-full flex flex-col items-center justify-end">
+                {/* Central Head Alignment Silhouette with Anatomical Absolute Landmarks */}
                 <div
                   style={{
                     width: `${modalGuideW}px`,
                     height: `${modalGuideH}px`,
                   }}
-                  className={`border-2 border-dashed rounded-full flex flex-col items-center justify-between py-2.5 transition-all duration-200 ${
+                  className={`relative border-2 border-dashed rounded-full transition-all duration-200 ${
                     isScanSuccess
                       ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_30px_rgba(16,185,129,0.5)]"
                       : isScanning
@@ -433,93 +437,128 @@ export default function FaceCalibrationModal({
                 >
                   {/* Horizontal Scanning Laser Bar */}
                   {isScanning && (
-                    <div className="absolute inset-x-8 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse shadow-[0_0_15px_#22d3ee]" />
+                    <div className="absolute inset-x-6 h-1 bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse shadow-[0_0_15px_#22d3ee] top-1/2 -translate-y-1/2 z-20" />
                   )}
 
-                  <div className="text-[8.5px] font-mono font-bold text-cyan-300 bg-slate-950/80 px-2 py-0.5 rounded border border-cyan-800/60">
+                  {/* 1. Top of Head Label */}
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[8px] font-mono font-bold text-cyan-300 bg-slate-950/85 px-2 py-0.5 rounded border border-cyan-800/60 z-10 whitespace-nowrap">
                     TOP OF HEAD
                   </div>
 
-                  {/* Eye Symbols inside Scanner */}
-                  <div className="w-full flex justify-around items-center px-2">
-                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400/80 bg-cyan-950/60 text-cyan-300 text-[7px] font-mono shadow-sm">
-                      <Eye className="h-3 w-3 text-cyan-400" />
+                  {/* 2. Calibration Status Badge (Positioned at 22% in upper forehead zone) */}
+                  <div className="absolute top-[22%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 whitespace-nowrap">
+                    {isScanSuccess ? (
+                      <div className="flex items-center space-x-1 bg-slate-950/90 px-2.5 py-0.5 rounded-lg border border-emerald-500/70 shadow-lg">
+                        <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                        <span className="text-[9px] font-bold text-emerald-300 font-mono">
+                          SCAN COMPLETE!
+                        </span>
+                      </div>
+                    ) : isScanning ? (
+                      <div className="bg-slate-950/90 px-2.5 py-0.5 rounded-lg border border-cyan-500/70 flex items-center space-x-1 shadow-lg">
+                        <span className="text-[10px] font-bold font-mono text-cyan-300">
+                          SCANNING: {scanSecondsLeft}s
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[8.5px] text-slate-300 font-mono bg-slate-950/85 px-2 py-0.5 rounded border border-slate-700">
+                        {metrics.faceDetected
+                          ? "FACE ALIGNED • READY"
+                          : "FIT FACE IN OVAL"}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 3. Anatomical Eye Plane Reticle (Positioned at precisely 46% - directly over real eyes) */}
+                  <div className="absolute top-[46%] left-0 right-0 -translate-y-1/2 flex justify-between px-3 z-10">
+                    {/* Left Eye Symbol */}
+                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400 bg-cyan-950/80 text-cyan-300 text-[7.5px] font-mono shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+                      <Eye className="h-3 w-3 text-cyan-300 animate-pulse" />
                       <span>EYE-L</span>
                     </div>
-                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400/80 bg-cyan-950/60 text-cyan-300 text-[7px] font-mono shadow-sm">
-                      <Eye className="h-3 w-3 text-cyan-400" />
+
+                    {/* Right Eye Symbol */}
+                    <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded-full border border-cyan-400 bg-cyan-950/80 text-cyan-300 text-[7.5px] font-mono shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+                      <Eye className="h-3 w-3 text-cyan-300 animate-pulse" />
                       <span>EYE-R</span>
                     </div>
                   </div>
 
-                  {/* Nose Airflow Marker inside Scanner */}
-                  <div className="flex flex-col items-center justify-center -my-0.5">
-                    <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/60">
+                  {/* 4. Anatomical Nose Apex Marker (Positioned at precisely 64% - right over nasal apex) */}
+                  <div className="absolute top-[64%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center z-10">
+                    <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/85 shadow-[0_0_8px_rgba(6,182,212,0.5)]">
                       <Target
                         className="h-3.5 w-3.5 text-cyan-300 animate-spin"
                         style={{ animationDuration: "8s" }}
                       />
                     </div>
-                    <span className="text-[6.5px] font-mono text-cyan-300 bg-slate-950/90 px-1 py-0.2 rounded border border-cyan-700/60 mt-0.5 font-bold">
+                    <span className="text-[6.5px] font-mono text-cyan-300 bg-slate-950/90 px-1 py-0.2 rounded border border-cyan-700/60 mt-0.5 font-bold whitespace-nowrap">
                       NOSE APEX
                     </span>
                   </div>
 
-                  {isScanSuccess ? (
-                    <div className="flex flex-col items-center space-y-1 bg-slate-950/90 px-3 py-1 rounded-lg border border-emerald-500/60">
-                      <CheckCircle className="h-5 w-5 text-emerald-400" />
-                      <span className="text-[9.5px] font-bold text-emerald-300 font-mono">
-                        SCAN COMPLETE!
-                      </span>
-                    </div>
-                  ) : isScanning ? (
-                    <div className="bg-slate-950/90 px-2.5 py-1 rounded-lg border border-cyan-500/60 flex flex-col items-center space-y-0.5">
-                      <span className="text-[11px] font-bold font-mono text-cyan-300">
-                        SCANNING: {scanSecondsLeft}s
-                      </span>
-                      <span className="text-[8.5px] text-slate-400 font-mono">
-                        HOLD STEADY
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-[9px] text-slate-300 font-mono bg-slate-950/80 px-2 py-0.5 rounded border border-slate-700">
-                      {metrics.faceDetected
-                        ? "FACE ALIGNED • CLICK START"
-                        : "FIT IN FRAME"}
-                    </span>
-                  )}
-
-                  <div className="text-[8px] font-mono text-slate-400 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-700">
+                  {/* 5. Chin & Jawline Tag (Positioned at 94% near base) */}
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[7.5px] font-mono text-slate-400 bg-slate-950/85 px-2 py-0.5 rounded border border-slate-700 z-10 whitespace-nowrap">
                     CHIN & JAWLINE
                   </div>
                 </div>
 
                 {/* Neck Column */}
                 <div
-                  style={{ width: `${Math.round(modalGuideW * 0.52)}px` }}
-                  className="h-7 -mt-2 border-x-2 border-b-2 border-cyan-400/70 bg-cyan-950/20 rounded-b-xl flex items-center justify-center z-10"
+                  style={{ width: `${Math.round(modalGuideW * 0.48)}px` }}
+                  className="h-6 -mt-1.5 border-x-2 border-b-2 border-cyan-400/70 bg-cyan-950/20 rounded-b-xl flex items-center justify-center z-10"
                 >
-                  <span className="text-[6.5px] font-mono text-cyan-300">
+                  <span className="text-[6.5px] font-mono text-cyan-300 font-semibold">
                     NECK / CLAVICLE
                   </span>
                 </div>
 
-                {/* Full Shoulder Span Wings in Scanner */}
-                <div className="w-full flex justify-between items-center -mt-3 px-1 pointer-events-none z-0">
-                  <div className="flex-1 h-8 border-t-2 border-l-2 border-dashed rounded-tl-3xl border-cyan-400/80 bg-cyan-950/30 flex items-center pl-2">
-                    <span className="text-[7px] font-mono text-cyan-300 font-bold bg-slate-950/90 px-1 py-0.5 rounded border border-cyan-600/50">
-                      SHOULDER-L
-                    </span>
+                {/* Natural Sloping Shoulders Contour (Trapezius Curved Wings) */}
+                <div className="w-full relative -mt-3 pointer-events-none z-0 px-1">
+                  <svg
+                    className="w-full h-12 overflow-visible"
+                    viewBox="0 0 320 48"
+                    preserveAspectRatio="none"
+                  >
+                    {/* Left Shoulder Natural Downward Curve */}
+                    <path
+                      d="M 125 4 C 100 8, 45 22, 0 38"
+                      fill="none"
+                      stroke={
+                        isScanSuccess
+                          ? "rgba(16, 185, 129, 0.9)"
+                          : "rgba(6, 182, 212, 0.8)"
+                      }
+                      strokeWidth="2.5"
+                      strokeDasharray="5 3"
+                    />
+                    {/* Right Shoulder Natural Downward Curve */}
+                    <path
+                      d="M 195 4 C 220 8, 275 22, 320 38"
+                      fill="none"
+                      stroke={
+                        isScanSuccess
+                          ? "rgba(16, 185, 129, 0.9)"
+                          : "rgba(6, 182, 212, 0.8)"
+                      }
+                      strokeWidth="2.5"
+                      strokeDasharray="5 3"
+                    />
+                  </svg>
+
+                  {/* Left Shoulder Floating Badge */}
+                  <div className="absolute left-2 bottom-2 bg-slate-950/90 text-cyan-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-cyan-600/60 shadow-md">
+                    SHOULDER-L
                   </div>
-                  <div className="w-16 h-6 border-x-2 border-b-2 border-dashed rounded-b-lg border-cyan-400/80 bg-cyan-950/30 flex items-center justify-center">
-                    <span className="text-[6px] font-mono text-cyan-300">
-                      CHEST
-                    </span>
+
+                  {/* Sternum / Thoracic Anchor */}
+                  <div className="absolute left-1/2 -translate-x-1/2 bottom-1 bg-cyan-950/80 text-cyan-300 text-[6.5px] font-mono font-bold px-2 py-0.5 rounded border border-cyan-700/60">
+                    THORACIC
                   </div>
-                  <div className="flex-1 h-8 border-t-2 border-r-2 border-dashed rounded-tr-3xl border-cyan-400/80 bg-cyan-950/30 flex items-center justify-end pr-2">
-                    <span className="text-[7px] font-mono text-cyan-300 font-bold bg-slate-950/90 px-1 py-0.5 rounded border border-cyan-600/50">
-                      SHOULDER-R
-                    </span>
+
+                  {/* Right Shoulder Floating Badge */}
+                  <div className="absolute right-2 bottom-2 bg-slate-950/90 text-cyan-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-cyan-600/60 shadow-md">
+                    SHOULDER-R
                   </div>
                 </div>
               </div>

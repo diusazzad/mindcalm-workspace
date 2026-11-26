@@ -1,35 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Navbar from "./components/Navbar";
-import ConsentGateModal from "./components/ConsentGateModal";
-import FaceCalibrationModal from "./components/FaceCalibrationModal";
 import VitalsHUD from "./components/VitalsHUD";
 import CameraPreviewHUD from "./components/CameraPreviewHUD";
 import WaveformVisualizer from "./components/WaveformVisualizer";
 import BoxBreathingPacer from "./components/BoxBreathingPacer";
 import SoundscapeController from "./components/SoundscapeController";
-import {
-  ShieldCheck,
-  Video,
-  Play,
-  Square,
-  RefreshCw,
-  Cpu,
-  Activity,
-  Scan,
-} from "lucide-react";
+import ConsentGateModal from "./components/ConsentGateModal";
+import FaceCalibrationModal from "./components/FaceCalibrationModal";
+import { Play, Square, RefreshCw, Activity, Scan } from "lucide-react";
 
 export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
-  const [sessionDuration, setSessionDuration] = useState(0);
   const [isConsentGranted, setIsConsentGranted] = useState(false);
   const [isConsentModalOpen, setIsConsentModalOpen] = useState(false);
   const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
   const [calibratedProfile, setCalibratedProfile] = useState(null);
-  const [isMuted, setIsMuted] = useState(false);
   const [isHumanDetected, setIsHumanDetected] = useState(false);
+  const [sessionDuration, setSessionDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
 
-  // Vitals State - Initially 0 until camera starts and face is aligned & detected
+  // Optical wave histories for 30Hz visualizers
+  const [ppgHistory, setPpgHistory] = useState([]);
+  const [respHistory, setRespHistory] = useState([]);
+
+  // Physiological vitals initialized cleanly to 0
   const [vitals, setVitals] = useState({
     pulse_bpm: 0,
     pulse_confidence: 0,
@@ -42,41 +37,30 @@ export default function App() {
     is_talking: false,
   });
 
-  // Waveform Buffers (120 points)
-  const [ppgHistory, setPpgHistory] = useState([]);
-  const [respHistory, setRespHistory] = useState([]);
-
   const wsRef = useRef(null);
+  const sessionTimerRef = useRef(null);
   const lastOpticalTimeRef = useRef(0);
 
-  // Check consent status on mount
+  // Fetch initial telemetry state on mount
   useEffect(() => {
     fetch("/api/consent")
       .then((res) => res.json())
       .then((data) => {
-        const granted = !!(data.consent_granted ?? data.consentGranted);
-        setIsConsentGranted(granted);
-        if (!granted) {
-          setIsConsentModalOpen(true);
+        setIsConsentGranted(!!data.consent_granted);
+      })
+      .catch((e) => console.error("Consent fetch error:", e));
+
+    fetch("/api/vitals/current")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.session_active) {
+          setIsSessionActive(true);
         }
       })
-      .catch((err) => console.warn("Consent fetch error:", err));
+      .catch((e) => console.error("Initial vitals error:", e));
   }, []);
 
-  // Session duration timer
-  useEffect(() => {
-    let timer = null;
-    if (isSessionActive) {
-      timer = setInterval(() => {
-        setSessionDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      setSessionDuration(0);
-    }
-    return () => clearInterval(timer);
-  }, [isSessionActive]);
-
-  // Connect to 30Hz WebSocket
+  // WebSocket for Live Physiological Telemetry
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/vitals`;
@@ -172,20 +156,43 @@ export default function App() {
         };
       });
     } else {
-      // No human detected / out of circle: zero waveforms
+      // No human detected / out of frame: zero waveforms
       setPpgHistory([]);
       setRespHistory([]);
     }
   }, []);
 
+  // Session duration timer
+  useEffect(() => {
+    if (isSessionActive) {
+      sessionTimerRef.current = setInterval(() => {
+        setSessionDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+      }
+      setSessionDuration(0);
+    }
+    return () => {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+      }
+    };
+  }, [isSessionActive]);
+
   const handleGrantConsent = async () => {
     try {
-      await fetch("/api/consent", {
+      const res = await fetch("/api/consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ granted: true }),
       });
-      setIsConsentGranted(true);
+      if (res.ok) {
+        setIsConsentGranted(true);
+        // Prompt mandatory head & shoulder calibration right after granting consent
+        setIsCalibrationModalOpen(true);
+      }
     } catch (e) {
       console.error("Grant consent failed:", e);
     }
@@ -219,31 +226,20 @@ export default function App() {
     }
   };
 
+  // Start Telemetry: Mandatory 5-Second Head & Shoulder Calibration
   const handleStartSession = async () => {
     if (!isConsentGranted) {
       setIsConsentModalOpen(true);
       return;
     }
 
-    // If head morphology has not been calibrated yet, prompt the 5-second calibration scan popup
-    if (!calibratedProfile) {
-      setIsCalibrationModalOpen(true);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/session/start", { method: "POST" });
-      if (res.ok) {
-        setIsSessionActive(true);
-      }
-    } catch (e) {
-      console.error("Start session error:", e);
-    }
+    // Always require the 5-second calibration scan popup before launching telemetry
+    setIsCalibrationModalOpen(true);
   };
 
   const handleCalibrationComplete = async (profile) => {
     setCalibratedProfile(profile);
-    // Auto-start session once user confirms calibrated head profile
+    // Auto-start session once user completes 5-second calibration scan
     try {
       const res = await fetch("/api/session/start", { method: "POST" });
       if (res.ok) {
@@ -339,17 +335,17 @@ export default function App() {
           </div>
 
           <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
-            {/* Scan Head Calibration Button */}
-            <button
-              onClick={() => setIsCalibrationModalOpen(true)}
-              className="px-3 py-2 rounded-xl border border-cyan-700/60 bg-cyan-950/60 hover:bg-cyan-900/60 text-xs font-semibold text-cyan-300 flex items-center space-x-1.5 transition-colors shadow-sm"
-              title="Calibrate your custom head size and ratio"
-            >
-              <Scan className="h-4 w-4 text-cyan-400" />
-              <span>
-                {calibratedProfile ? "Recalibrate Head" : "Scan Head (5s)"}
-              </span>
-            </button>
+            {/* When session is active, allow user to recalibrate posture */}
+            {isSessionActive && (
+              <button
+                onClick={() => setIsCalibrationModalOpen(true)}
+                className="px-3 py-2 rounded-xl border border-cyan-700/60 bg-cyan-950/60 hover:bg-cyan-900/60 text-xs font-semibold text-cyan-300 flex items-center space-x-1.5 transition-colors shadow-sm"
+                title="Recalibrate head, nose and shoulder posture"
+              >
+                <Scan className="h-4 w-4 text-cyan-400" />
+                <span>Recalibrate Head</span>
+              </button>
+            )}
 
             {isSessionActive ? (
               <button
@@ -363,9 +359,10 @@ export default function App() {
               <button
                 onClick={handleStartSession}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-xs font-semibold text-white shadow-lg shadow-cyan-500/20 flex items-center space-x-1.5 transition-all"
+                title="Perform mandatory 5-second biometric scan & start telemetry"
               >
                 <Play className="h-4 w-4" />
-                <span>Start Telemetry</span>
+                <span>Start Telemetry (5s Scan)</span>
               </button>
             )}
 
@@ -421,28 +418,20 @@ export default function App() {
           </div>
           <div className="lg:col-span-5 flex flex-col">
             <SoundscapeController
+              stressIndex={
+                vitals.cognitive_state === "COGNITIVE_STRAIN"
+                  ? 80
+                  : vitals.cognitive_state === "DEEP_FOCUS"
+                    ? 45
+                    : 20
+              }
               isMuted={isMuted}
-              cognitiveState={vitals.cognitive_state}
             />
           </div>
         </div>
-
-        {/* Challenge Footer Banner */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-3">
-          <div className="flex items-center space-x-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-            <span>
-              Presage SmartSpectra SDK Challenge 2026 • 100% Ephemeral in-memory
-              optical processing
-            </span>
-          </div>
-          <span className="font-mono text-slate-400">
-            Strictly non-clinical ergonomic biofeedback
-          </span>
-        </div>
       </main>
 
-      {/* Mandatory Consent Gate Modal */}
+      {/* Explicit Opt-In Consent Gate Modal */}
       <ConsentGateModal
         isOpen={isConsentModalOpen}
         onClose={() => setIsConsentModalOpen(false)}
@@ -451,7 +440,7 @@ export default function App() {
         isConsentGranted={isConsentGranted}
       />
 
-      {/* 5-Second Face & Head Morphological Calibration Modal */}
+      {/* 5-Second Head, Nose & Shoulder Calibration Scan Modal */}
       <FaceCalibrationModal
         isOpen={isCalibrationModalOpen}
         onClose={() => setIsCalibrationModalOpen(false)}
