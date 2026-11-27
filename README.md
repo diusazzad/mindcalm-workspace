@@ -1,10 +1,11 @@
 <div align="center">
 
 # 🌿 MindCalm Workspace
+
 ### Real-Time Ergonomic & Cognitive Bio-Feedback Assistant for Developers & Knowledge Workers
 
 **DEV.to x Presage SmartSpectra SDK Challenge Submission**  
-*Prize Category: Best Thoughtful Real-World Use*
+_Prize Category: Best Thoughtful Real-World Use_
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Presage SmartSpectra](https://img.shields.io/badge/Presage-SmartSpectra_v3.4-10B981.svg)](https://smartspectra.presagetech.com/)
@@ -19,6 +20,7 @@
 ## 📌 Executive Summary & Real-World Problem
 
 In modern knowledge work, developers, engineers, and students spend 8 to 14 hours daily behind screens under high cognitive loads. This prolonged immersion induces subtle, involuntary physiological dysregulations:
+
 1. **Screen Apnea (Unconscious Shallow Breathing):** Studies show over 80% of computer workers unconsciously hold their breath or breathe shallowly while debugging or focusing, elevating cortisol and mental fatigue.
 2. **Asthenopia & Reduced Blink Frequency (Dry Eye Syndrome):** Natural blink rates plummet from an average of **15–20 blinks/min down to 4–6 blinks/min** when reading code, triggering severe ocular fatigue and headaches.
 3. **Unnoticed Stress Spikes & Autonomic Imbalance:** Low Heart Rate Variability (HRV) and sustained tachycardia often go unnoticed until physical exhaustion sets in.
@@ -29,22 +31,22 @@ In modern knowledge work, developers, engineers, and students spend 8 to 14 hour
 
 ## 🚀 Key Features
 
-* **🫀 Contactless Cardiac & HRV Tracking:**
+- **🫀 Contactless Cardiac & HRV Tracking:**
   - Extracts real-time photoplethysmogram (PPG) pulse waveforms and Heart Rate Variability (HRV) directly from facial capillary blood flow.
   - Dynamically calculates autonomic nervous system balance and stress indices.
 
-* **🫁 Respiration & Screen-Apnea Detection:**
+- **🫁 Respiration & Screen-Apnea Detection:**
   - Continuously analyzes respiratory wave cycles and breaths-per-minute (RPM).
   - Triggers gentle, non-intrusive haptic/visual nudges when prolonged shallow breathing or breath-holding is detected.
 
-* **👁️ Blink Frequency & 20-20-20 Eye Strain Guardian:**
+- **👁️ Blink Frequency & 20-20-20 Eye Strain Guardian:**
   - Quantifies real-time blinks per minute using facial landmark telemetry.
   - Warns when blink frequency drops below critical ergonomic thresholds to prevent dry eyes.
 
-* **🧘 Interactive Adaptive Box-Breathing Pacer:**
+- **🧘 Interactive Adaptive Box-Breathing Pacer:**
   - An interactive visual breathing circle that dynamically synchronizes with the user's detected respiration cycle and gently coaches them back to a restorative 4-4-4-4 rhythm.
 
-* **🎵 Stress-Modulated Generative Soundscapes:**
+- **🎵 Stress-Modulated Generative Soundscapes:**
   - Generative ambient audio (soft rain, binaural theta frequencies, warm lo-fi) that subtly softens and deepens in real-time as heart rate and stress escalate.
 
 ---
@@ -108,11 +110,13 @@ In strict adherence to the Presage SmartSpectra Challenge guidelines and respons
 ## 🛠️ Quick Start & Installation
 
 ### 1. Prerequisites
+
 - **Node.js:** v18.0.0 or higher
 - **NPM:** v9.0.0 or higher
 - **Presage SmartSpectra API Key:** Obtainable via [Presage Developer Portal](https://physiology.presagetech.com/auth/register).
 
 ### 2. Environment Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/diusazzad/mindcalm-workspace.git
@@ -121,25 +125,72 @@ cd mindcalm-workspace
 # Copy the environment template
 cp .env.example .env
 ```
+
 Open `.env` and insert your active SmartSpectra API key:
+
 ```env
 SMARTSPECTRA_API_KEY=your_actual_key_here
 PORT=5000
 ```
-*(Note: `.env` is protected by `.gitignore` and is never committed to version control).*
 
-### 3. Install Dependencies & Launch
+_(Note: `.env` is protected by `.gitignore` and is never committed to version control)._
+
+### 3. Install Dependencies & Launch (2 Servers)
+
+For local development, you need to run **2 servers concurrently** in separate terminals:
+
+1. **Backend Server** (Express API & WebSocket Telemetry on Port `5000`)
+2. **Frontend Client** (Vite + React 18 UI with Live HMR on Port `5173`)
+
+#### Terminal 1: Backend Server (Port 5000)
+
 ```bash
-# Install backend dependencies
+# In the root project directory:
 npm install
 
-# Start development server
+# Start backend server in watch mode:
 npm run dev
 ```
 
-Visit `http://localhost:5173` to access MindCalm Workspace!
+#### Terminal 2: Frontend Client (Port 5173)
+
+```bash
+# In a second terminal window, navigate to the client folder:
+cd client
+npm install
+
+# Start Vite development server:
+npm run dev
+```
+
+Visit **`http://localhost:5173`** in your browser to access MindCalm Workspace!
+
+---
+
+#### 💡 Alternative: Single-Service Production / Standalone Mode
+
+If you prefer running a single unified server (how it is deployed in production on Render):
+
+```bash
+# Build frontend assets and run unified Express server (Port 5000):
+npm run build
+npm start
+```
+
+Then visit **`http://localhost:5000`**.
+
+---
+
+## 🧪 Testing
+
+To run the full integration and unit test suite:
+
+```bash
+npm test
+```
 
 ---
 
 ## 📄 License
+
 This project is open-source under the [MIT License](LICENSE).
