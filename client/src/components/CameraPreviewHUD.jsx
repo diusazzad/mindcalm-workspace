@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import {
   Camera,
   CameraOff,
@@ -20,8 +20,11 @@ export default function CameraPreviewHUD({
   calibratedProfile,
   onOpenCalibration,
   onOpticalTelemetry,
+  onSendFrame = null,
 }) {
   const videoRef = useRef(null);
+  const frameCanvasRef = useRef(null);
+  const lastWsFrameRef = useRef(0);
   const [stream, setStream] = useState(null);
   const [cameraError, setCameraError] = useState(null);
   const [isMutedVideo, setIsMutedVideo] = useState(false);
@@ -101,7 +104,6 @@ export default function CameraPreviewHUD({
           const telemetry = engineRef.current.processFrame(videoRef.current);
 
           if (telemetry) {
-            // Flash on genuine blink
             if (telemetry.justBlinked) {
               setBlinkFlash(true);
               setTimeout(() => setBlinkFlash(false), 220);
@@ -134,9 +136,47 @@ export default function CameraPreviewHUD({
               respPhase,
             });
 
-            // Stream live telemetry up to App.jsx for waveforms & vitals cards
             if (onOpticalTelemetry) {
               onOpticalTelemetry(telemetry);
+            }
+          }
+
+          // Stream downscaled 160x120 RGB frame (~10Hz) when Native SDK custom-input mode is active
+          if (
+            onSendFrame &&
+            videoRef.current.readyState >= 2 &&
+            timestamp - lastWsFrameRef.current >= 100
+          ) {
+            lastWsFrameRef.current = timestamp;
+            try {
+              if (!frameCanvasRef.current) {
+                frameCanvasRef.current = document.createElement("canvas");
+                frameCanvasRef.current.width = 160;
+                frameCanvasRef.current.height = 120;
+              }
+              const fCtx = frameCanvasRef.current.getContext("2d", {
+                willReadFrequently: true,
+              });
+              fCtx.drawImage(videoRef.current, 0, 0, 160, 120);
+              const rgba = fCtx.getImageData(0, 0, 160, 120).data;
+              const rgb = new Uint8Array(160 * 120 * 3);
+              for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+                rgb[j] = rgba[i];
+                rgb[j + 1] = rgba[i + 1];
+                rgb[j + 2] = rgba[i + 2];
+              }
+              let bin = "";
+              for (let i = 0; i < rgb.length; i++) {
+                bin += String.fromCharCode(rgb[i]);
+              }
+              onSendFrame(
+                btoa(bin),
+                160,
+                120,
+                Math.round(performance.now() * 1000),
+              );
+            } catch {
+              // Ignore frame serialization errors
             }
           }
         }
@@ -153,7 +193,7 @@ export default function CameraPreviewHUD({
         animFrameRef.current = null;
       }
     };
-  }, [isSessionActive, stream, isMutedVideo, onOpticalTelemetry]);
+  }, [isSessionActive, stream, isMutedVideo, onOpticalTelemetry, onSendFrame]);
 
   // Webcam stream management
   useEffect(() => {
@@ -236,18 +276,19 @@ export default function CameraPreviewHUD({
         <div className="flex items-center space-x-2">
           <Camera className="h-4 w-4 text-cyan-400" />
           <h3 className="font-bold text-xs uppercase tracking-wider text-white">
-            SmartSpectra Optical Viewport
+            Optical Framing Viewport
           </h3>
         </div>
         <div className="flex items-center space-x-2">
-          {/* Scan Head Calibration Trigger Button */}
           <button
             onClick={onOpenCalibration}
             className="flex items-center space-x-1 text-[10px] font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-700/60 hover:bg-cyan-900/80 px-2 py-0.5 rounded-full transition-colors"
-            title="Open 5-Second Head Scan Calibration"
+            title="Open 5-Second Head & Shoulder Framing Calibration"
           >
             <Scan className="h-3 w-3 text-cyan-400" />
-            <span>{calibratedProfile ? "Recalibrate Head" : "Scan Head"}</span>
+            <span>
+              {calibratedProfile ? "Recalibrate Framing" : "Framing Scan"}
+            </span>
           </button>
 
           {stream && (
@@ -289,7 +330,6 @@ export default function CameraPreviewHUD({
 
       {/* Video Box */}
       <div className="relative aspect-[4/3] w-full rounded-xl bg-slate-950 border border-slate-800/80 overflow-hidden flex items-center justify-center">
-        {/* Mirror video for natural reflection */}
         <video
           ref={videoRef}
           autoPlay
@@ -301,7 +341,6 @@ export default function CameraPreviewHUD({
         />
 
         {stream && !isMutedVideo ? (
-          /* HUD Interactive Optical Vision Mesh Overlay */
           <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 select-none">
             {/* Top Status Bar */}
             <div
@@ -340,12 +379,10 @@ export default function CameraPreviewHUD({
               </span>
             </div>
 
-            {/* Central Anatomical Target Silhouette with Anatomically Correct Features */}
+            {/* Central Anatomical Target Silhouette */}
             <div className="relative w-full h-full my-auto flex flex-col items-center justify-end pb-0">
               {opticalStats.isAligned ? (
-                /* Aligned Head + Nose + Shoulders Silhouette Guide */
                 <div className="relative w-full flex flex-col items-center justify-end">
-                  {/* Head Oval Custom-Sized with Absolute Coordinates */}
                   <div
                     style={{
                       width: `${customGuideWidth}px`,
@@ -357,14 +394,13 @@ export default function CameraPreviewHUD({
                         : "border-emerald-400"
                     }`}
                   >
-                    {/* 1. Forehead rPPG Region (Top 2px) */}
+                    {/* 1. Forehead rPPG Region */}
                     <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-5 border border-emerald-400 bg-emerald-950/70 rounded flex items-center justify-center text-[7.5px] font-mono text-emerald-300 font-bold z-10">
                       <span className="animate-pulse">FOREHEAD rPPG</span>
                     </div>
 
-                    {/* 2. Bilateral Eye Symbols Reticle (Accurately positioned at 46% - directly on real eyes) */}
+                    {/* 2. Bilateral Eye Symbols Reticle (46%) */}
                     <div className="absolute top-[46%] left-0 right-0 -translate-y-1/2 flex justify-between px-2.5 z-10">
-                      {/* Left Eye Symbol */}
                       <div
                         className={`flex items-center space-x-1 px-1.5 py-0.5 border rounded-full text-[7.5px] font-mono transition-all duration-150 ${
                           blinkFlash || opticalStats.isBlink
@@ -386,7 +422,6 @@ export default function CameraPreviewHUD({
                         </span>
                       </div>
 
-                      {/* Right Eye Symbol */}
                       <div
                         className={`flex items-center space-x-1 px-1.5 py-0.5 border rounded-full text-[7.5px] font-mono transition-all duration-150 ${
                           blinkFlash || opticalStats.isBlink
@@ -409,7 +444,7 @@ export default function CameraPreviewHUD({
                       </div>
                     </div>
 
-                    {/* 3. Precision Nose Airflow Marker (Positioned at 64% - right over nasal apex) */}
+                    {/* 3. Precision Nose Airflow Marker (64%) */}
                     <div className="absolute top-[64%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center z-10">
                       <div className="w-5 h-5 border border-cyan-400 rounded-full flex items-center justify-center bg-cyan-950/80 shadow-[0_0_8px_rgba(6,182,212,0.6)]">
                         <Target
@@ -422,7 +457,7 @@ export default function CameraPreviewHUD({
                       </span>
                     </div>
 
-                    {/* 4. Mouth / Speech Motion Reticle (Positioned at 80% over mouth) */}
+                    {/* 4. Mouth / Speech Motion Reticle (80%) */}
                     <div className="absolute top-[80%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 whitespace-nowrap">
                       <div
                         className={`px-2 py-0.5 border rounded text-[7px] font-mono transition-all duration-150 ${
@@ -436,7 +471,7 @@ export default function CameraPreviewHUD({
                     </div>
                   </div>
 
-                  {/* Neck / Clavicle Guide (ঘাড় গাইড) */}
+                  {/* Neck / Clavicle Guide */}
                   <div
                     style={{
                       width: `${Math.round(customGuideWidth * 0.48)}px`,
@@ -448,21 +483,19 @@ export default function CameraPreviewHUD({
                     </span>
                   </div>
 
-                  {/* Natural Sloping Trapezius Shoulders (Curved Wings) */}
+                  {/* Natural Sloping Trapezius Shoulders */}
                   <div className="w-full relative -mt-3 pointer-events-none z-0 px-1">
                     <svg
                       className="w-full h-12 overflow-visible"
                       viewBox="0 0 320 48"
                       preserveAspectRatio="none"
                     >
-                      {/* Left Shoulder Slope */}
                       <path
                         d="M 125 4 C 100 8, 45 22, 0 38"
                         fill="none"
                         stroke="rgba(16, 185, 129, 0.85)"
                         strokeWidth="2.5"
                       />
-                      {/* Right Shoulder Slope */}
                       <path
                         d="M 195 4 C 220 8, 275 22, 320 38"
                         fill="none"
@@ -471,7 +504,6 @@ export default function CameraPreviewHUD({
                       />
                     </svg>
 
-                    {/* Floating Shoulder Badges */}
                     <div className="absolute left-2 bottom-2 bg-slate-950/90 text-emerald-300 text-[7px] font-mono font-bold px-2 py-0.5 rounded border border-emerald-500/60 shadow-md">
                       SHOULDER-L
                     </div>
@@ -483,16 +515,13 @@ export default function CameraPreviewHUD({
                     </div>
                   </div>
 
-                  {/* Ready Cue Badge */}
                   <div className="mt-1 bg-emerald-950/90 text-emerald-200 px-3 py-0.5 rounded-full text-[9px] font-mono border border-emerald-500/50 flex items-center space-x-1 shadow-lg">
                     <CheckCircle className="h-3 w-3 text-emerald-400" />
                     <span>LOCKED • BREATHE WITH PACER</span>
                   </div>
                 </div>
               ) : (
-                /* Red Alert Silhouette Guide: Head, Nose & Shoulders Out of Bounds */
                 <div className="relative w-full flex flex-col items-center justify-end animate-pulse">
-                  {/* Head Oval Out of Guide */}
                   <div
                     style={{
                       width: `${customGuideWidth + 10}px`,
@@ -509,7 +538,6 @@ export default function CameraPreviewHUD({
                     </span>
                   </div>
 
-                  {/* Neck Guide Box */}
                   <div
                     style={{
                       width: `${Math.round((customGuideWidth + 10) * 0.48)}px`,
@@ -521,7 +549,6 @@ export default function CameraPreviewHUD({
                     </span>
                   </div>
 
-                  {/* Shoulder Outline in Alert Mode */}
                   <div className="w-full relative -mt-3 pointer-events-none px-1">
                     <svg
                       className="w-full h-12 overflow-visible"
@@ -553,7 +580,6 @@ export default function CameraPreviewHUD({
                 </div>
               )}
 
-              {/* Real Blink Flash Screen Toast */}
               {blinkFlash && (
                 <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-amber-500/90 text-slate-950 px-3 py-1 rounded-full text-[10px] font-extrabold font-mono shadow-lg flex items-center space-x-1 animate-bounce">
                   <Sparkles className="h-3 w-3 text-slate-950" />
@@ -597,12 +623,12 @@ export default function CameraPreviewHUD({
               {!isConsentGranted
                 ? "Camera Locked (Consent Required)"
                 : !isSessionActive
-                  ? "Camera Standby (Click Start Telemetry)"
+                  ? "Camera Standby (Click Start Session)"
                   : "Camera Preview Muted"}
             </p>
             <p className="text-[11px] text-slate-400 max-w-[200px] mx-auto">
               {cameraError ||
-                "Optical signals will stream only when telemetry session is started."}
+                "Optical signals stream only when consent is granted and a session starts."}
             </p>
           </div>
         )}
@@ -614,7 +640,7 @@ export default function CameraPreviewHUD({
           <span>Zero Video Recording Guarantee</span>
         </span>
         <span className="text-cyan-400 font-mono">
-          Full Upper-Body Biometric Mesh
+          Optical Face & Shoulder Framing Guide
         </span>
       </div>
     </div>

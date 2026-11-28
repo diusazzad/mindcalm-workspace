@@ -2,14 +2,14 @@
 
 # 🌿 MindCalm Workspace
 
-### Real-Time Ergonomic & Cognitive Bio-Feedback Assistant for Developers & Knowledge Workers
+### Real-Time Ergonomic & Cognitive Wellness Companion for Developers & Screen Professionals
 
 **DEV.to x Presage SmartSpectra SDK Challenge Submission**  
 _Prize Category: Best Thoughtful Real-World Use_
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Presage SmartSpectra](https://img.shields.io/badge/Presage-SmartSpectra_v3.4-10B981.svg)](https://smartspectra.presagetech.com/)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38BDF8.svg)](https://tailwindcss.com/)
 
@@ -17,93 +17,104 @@ _Prize Category: Best Thoughtful Real-World Use_
 
 ---
 
+> **Non-Medical Ergonomic Wellness Disclaimer:** MindCalm Workspace is strictly a non-medical ergonomic, mindfulness, and screen-wellness tool. It is **not** a medical device and does **not** provide medical diagnosis, treatment, or clinical advice.
+
+---
+
 ## 📌 Executive Summary & Real-World Problem
 
-In modern knowledge work, developers, engineers, and students spend 8 to 14 hours daily behind screens under high cognitive loads. This prolonged immersion induces subtle, involuntary physiological dysregulations:
+Developers, engineers, and knowledge workers routinely spend 8 to 14 hours daily behind screens under intense cognitive focus. Prolonged screen immersion often triggers subtle ergonomic habits that go unnoticed until fatigue sets in:
 
-1. **Screen Apnea (Unconscious Shallow Breathing):** Studies show over 80% of computer workers unconsciously hold their breath or breathe shallowly while debugging or focusing, elevating cortisol and mental fatigue.
-2. **Asthenopia & Reduced Blink Frequency (Dry Eye Syndrome):** Natural blink rates plummet from an average of **15–20 blinks/min down to 4–6 blinks/min** when reading code, triggering severe ocular fatigue and headaches.
-3. **Unnoticed Stress Spikes & Autonomic Imbalance:** Low Heart Rate Variability (HRV) and sustained tachycardia often go unnoticed until physical exhaustion sets in.
+1. **Screen Apnea (Shallow Breathing Habits):** While debugging or focusing, many screen workers unconsciously hold their breath or shift to shallow thoracic breathing.
+2. **Reduced Blink Rate & Visual Stare Fatigue:** Natural blink rates frequently drop from **15–20 blinks/min down to 4–6 blinks/min** during dense code reading, signaling a need for a 20-20-20 visual break.
+3. **Unnoticed Autonomic Arousal & Focus Drift:** Sustained pulse elevation and lowered heart rate variability (HRV) recovery signals often accumulate silently before mental exhaustion hits.
 
-**MindCalm Workspace** is a contactless, privacy-preserving desktop and web companion. Leveraging the **Presage SmartSpectra SDK**, it continuously monitors live human physiological signals (Pulse, HRV, Respiration Rate, and Blink Frequency) through a standard webcam with **zero wearable hardware required**. It dynamically guides developers into ergonomic recovery through real-time bio-feedback, adaptive box-breathing pacers, and stress-modulated ambient soundscapes.
+**MindCalm Workspace** is a contactless, privacy-first ergonomic companion built around the **Presage SmartSpectra v3.4 SDK** architecture. With an ordinary webcam and **zero wearable hardware**, it tracks non-medical wellness cues (Pulse estimate, HRV RMSSD, Breathing Rate, and Blink Dynamics) and responds gently with an adaptive **Box-Breathing Pacer** and **Web Audio ambient soundscapes**.
+
+---
+
+## ⚙️ Honest Execution Modes (Local SDK vs. Cloud Demo)
+
+MindCalm Workspace explicitly separates and badges its runtime mode in the top navigation bar (`LIVE SDK` vs. `OPTICAL + DEMO` vs. `DEMO / SIMULATED`):
+
+1. **Local / Self-Hosted Native Mode (`native_smartspectra_v3.4`):**
+   - Activated when a valid `SMARTSPECTRA_API_KEY` is provided in `.env` on a supported platform (`win32-x64`, `linux-x64`, `linux-arm64`, or `darwin-arm64`).
+   - Initializes `SmartSpectraSDK` with `enableTelemetry: false` and requests `cardioMetrics`, `breathingMetrics`, and `faceMetrics`.
+   - Captures browser webcam frames (after explicit opt-in consent and a 5s head/shoulder framing scan) and pushes RGB buffers to the backend via WebSocket using `useCustomInput()` + `sendFrame()`, decoding live protobuf packets with `decodeMetrics()` and surfacing `validationStatus` hints.
+   - Enforces confidence gating (`confidence >= 40` for pulse, `>= 45` for breathing, `>= 50` for HRV) during the initial **15–30s signal warm-up**.
+
+2. **Cloud / Hardware-Free Simulation Fallback (`simulation_fallback` + Browser Optical Framing):**
+   - On Render (`https://mindcalm-workspace.onrender.com`), where no server-side camera or private API key is mounted, the backend runs in `simulation_fallback` mode and the UI clearly displays a **`DEMO / SIMULATED`** (or **`OPTICAL + DEMO`** when browser webcam framing is active) badge.
+   - This lets reviewers test the Consent Gate, anatomical Head/Eye/Nose/Shoulder framing guide, 120-sample Dual-Waveform Canvas, Breathing Pacer, and Web Audio synthesis with zero setup.
 
 ---
 
 ## 🚀 Key Features
 
-- **🫀 Contactless Cardiac & HRV Tracking:**
-  - Extracts real-time photoplethysmogram (PPG) pulse waveforms and Heart Rate Variability (HRV) directly from facial capillary blood flow.
-  - Dynamically calculates autonomic nervous system balance and stress indices.
-
-- **🫁 Respiration & Screen-Apnea Detection:**
-  - Continuously analyzes respiratory wave cycles and breaths-per-minute (RPM).
-  - Triggers gentle, non-intrusive haptic/visual nudges when prolonged shallow breathing or breath-holding is detected.
-
-- **👁️ Blink Frequency & 20-20-20 Eye Strain Guardian:**
-  - Quantifies real-time blinks per minute using facial landmark telemetry.
-  - Warns when blink frequency drops below critical ergonomic thresholds to prevent dry eyes.
-
+- **🫀 Contactless Pulse & HRV Tracking:**
+  - Estimates pulse rate (BPM) and HRV (RMSSD) with real-time confidence scores (`Conf: %`) and warm-up status gating.
+- **🫁 Respiration Pace & Screen-Apnea Cues:**
+  - Monitors thoracic breathing rate (RPM) and pauses or alerts during vocal motion (`talking` flag) or out-of-frame posture.
+- **👁️ Blink Dynamics & 20-20-20 Break Cues:**
+  - Tracks blink counts and rolling blinks/min, surfacing gentle break cues when blink rate drops below 12 blinks/min.
 - **🧘 Interactive Adaptive Box-Breathing Pacer:**
-  - An interactive visual breathing circle that dynamically synchronizes with the user's detected respiration cycle and gently coaches them back to a restorative 4-4-4-4 rhythm.
-
-- **🎵 Stress-Modulated Generative Soundscapes:**
-  - Generative ambient audio (soft rain, binaural theta frequencies, warm lo-fi) that subtly softens and deepens in real-time as heart rate and stress escalate.
+  - Visual pacer supporting **Box (4-4-4-4)**, **Coherent (5-5)**, and **Relax (4-7-8)** rhythms synced with user breathing pace.
+- **🎵 Arousal-Modulated Ambient Soundscapes:**
+  - Synthesizes filtered brown noise and gentle tones directly in the browser via the Web Audio API (no external audio files or tracking).
 
 ---
 
 ## 🏛️ System Architecture
 
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                   BROWSER WEBCAM & CONSENT GATE                      │
+│  1. Explicit Opt-In Consent -> 2. 5s Framing Scan (Head/Eye/Nose)    │
+│  3. Browser Optical Framing HUD + Optional 10Hz RGB Frame Stream     │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │ Ephemeral Frames / Events (RAM Only)
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│            PER-SESSION TELEMETRY ENGINE (server/services/)           │
+│  - Isolated per-client session via `x-session-id` / `?sessionId=`    │
+│  - Native Mode: SmartSpectraSDK (enableTelemetry: false)             │
+│    * useCustomInput() + sendFrame() + decodeMetrics()                │
+│    * Confidence Gating (Pulse >= 40, Breathing >= 45, HRV >= 50)     │
+│    * validationStatus alerts (low light, centering, motion)          │
+│  - Cloud Demo Mode: Deterministic `simulation_fallback`              │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │ 30Hz JSON Telemetry (WebSocket)
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│              MINDCALM WORKSPACE DASHBOARD (REACT 18)                 │
+│  - Honest `LIVE SDK` / `OPTICAL + DEMO` / `DEMO / SIMULATED` Badges  │
+│  - 120-Sample Dual-Waveform Visualizer (PPG & Respiration Canvas)    │
+│  - Adaptive Breathing Pacer + Web Audio Soundscape + Disclaimer      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    USER WEBCAM FEED                         │
-│       (Standard USB / Built-in Laptop Camera @ 30 FPS)      │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Video Frames (Local Memory Only)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│          PRESAGE SMARTSPECTRA SDK (v3.4.0 FFI RUNTIME)      │
-│  - Photoplethysmography (PPG) Cardio Pulse Waveform         │
-│  - Respiratory Waveform & Breath-Rate Extractor             │
-│  - Heart Rate Variability (HRV) & Autonomic Index           │
-│  - Facial Feature & Blink Frequency Telemetry Engine        │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Ephemeral Signal Stream (JSON/Events)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│              EXPRESS / WEBSOCKET TELEMETRY BRIDGE           │
-│  - Local Signal Aggregator & Smooth Waveform Sampler        │
-│  - Adaptive Bio-Feedback Classifier (Zen / Focus / Strain)   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Real-Time WebSocket Broadcast
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│            MINDCALM WORKSPACE DASHBOARD (REACT 18)          │
-│  - Real-Time PPG & Respiration Waveform Visualizers         │
-│  - Interactive Box-Breathing Respiration Pacer              │
-│  - Web Audio API Stress-Modulated Ambient Soundscapes       │
-│  - Explicit Camera Consent Gate & Instant Shutter Control   │
-└─────────────────────────────────────────────────────────────┘
-```
+
+### Edge Cases & Signal Engineering
+
+- **15–30s Warm-Up & Confidence Gating:** Early frames display `"Warming up"` until confidence thresholds stabilize instead of presenting noisy startup artifacts as stable vitals.
+- **Low-Light & Framing Alerts:** Native `validationStatus` hints and the anatomical framing overlay detect when the user leaves the guide or lighting drops, pausing waveform capture cleanly.
+- **Vocal Motion Gating:** Speaking modulates facial/jaw pixels and breathing traces; vocal motion triggers a `"Vocal Motion (Breathing Gated)"` badge to prevent false screen-apnea alerts.
+- **Per-User Web Isolation:** Each browser tab generates an ephemeral `sessionId` (`sessionStorage`), preventing consent or session state leakage between concurrent web users.
 
 ---
 
 ## 🔒 Consent and Data Handling (Required Disclosure)
 
-In strict adherence to the Presage SmartSpectra Challenge guidelines and responsible ethical computing:
+In strict adherence to the Presage SmartSpectra Challenge guidelines:
 
 1. **Explicit, Opt-In Camera Consent:**
-   - The camera is **never** accessed silently or on page load. A dedicated Consent Gate modal informs the user of camera usage, required permissions, and signal extraction goals before any camera capture stream is initialized.
-   - Users can pause, mute, or permanently disconnect the camera at any time via a 1-click hardware kill switch.
-
-2. **100% Ephemeral & On-Device Processing:**
-   - Raw video frames are analyzed locally in-memory by the SmartSpectra SDK FFI pipeline.
-   - **Zero** raw video frames, biometric facial embeddings, or photographs are ever recorded, saved to local disk, or transmitted to any external server.
-   - All signal metrics (pulse, breathing, blink count) exist solely as transient state in memory and are discarded immediately upon session closure.
-
-3. **Strict Non-Medical Wellness Disclaimer:**
-   - MindCalm Workspace is strictly an ergonomic wellness, mindfulness, and cognitive productivity tool.
-   - **It does NOT provide medical diagnosis, treatment, prognosis, or clinical decision-making.**
-   - It is not an FDA-cleared or CE-marked medical device and should never replace professional medical care.
+   - The camera is **never** accessed on page load. A dedicated Consent Gate modal explains camera usage and permissions before `getUserMedia` or any sensing session can start.
+   - Users can pause, mute video, or revoke consent at any time via a 1-click kill switch (`POST /api/consent { granted: false }`), immediately halting capture and clearing session buffers.
+2. **SDK Telemetry Opt-Out & Zero Storage:**
+   - `SmartSpectraSDK` is initialized with `enableTelemetry: false`.
+   - **Zero** raw video frames, photographs, or facial embeddings are ever written to disk, stored in a database, shared with third parties, or sent to external AI/LLM APIs.
+   - All transient signal buffers (up to 120 samples) reside strictly in volatile RAM and are discarded on stop/reset/disconnect.
+3. **Non-Medical Disclaimer:**
+   - MindCalm Workspace is strictly an ergonomic wellness and mindfulness tool—not a medical device—and does not diagnose, treat, cure, or prevent any medical condition.
 
 ---
 
@@ -111,9 +122,9 @@ In strict adherence to the Presage SmartSpectra Challenge guidelines and respons
 
 ### 1. Prerequisites
 
-- **Node.js:** v18.0.0 or higher
+- **Node.js:** v20.0.0 or higher (recommended by `@smartspectra/node-sdk` v3.4.0)
 - **NPM:** v9.0.0 or higher
-- **Presage SmartSpectra API Key:** Obtainable via [Presage Developer Portal](https://physiology.presagetech.com/auth/register).
+- **Presage SmartSpectra API Key:** Obtainable via [Presage Developer Portal](https://physiology.presagetech.com/auth/register) (optional — runs in `simulation_fallback` if omitted)
 
 ### 2. Environment Setup
 
@@ -126,18 +137,18 @@ cd mindcalm-workspace
 cp .env.example .env
 ```
 
-Open `.env` and insert your active SmartSpectra API key:
+Open `.env` and insert your SmartSpectra API key (leave empty to test simulation fallback mode):
 
 ```env
 SMARTSPECTRA_API_KEY=your_actual_key_here
 PORT=5000
 ```
 
-_(Note: `.env` is protected by `.gitignore` and is never committed to version control)._
+_(Note: `.env` is protected by `.gitignore` and never committed.)_
 
-### 3. Install Dependencies & Launch (2 Servers)
+### 3. Install Dependencies & Launch (2 Concurrent Servers)
 
-For local development, you need to run **2 servers concurrently** in separate terminals:
+For local development, run **2 servers concurrently** in separate terminals:
 
 1. **Backend Server** (Express API & WebSocket Telemetry on Port `5000`)
 2. **Frontend Client** (Vite + React 18 UI with Live HMR on Port `5173`)
@@ -163,16 +174,15 @@ npm install
 npm run dev
 ```
 
-Visit **`http://localhost:5173`** in your browser to access MindCalm Workspace!
+Visit **`http://localhost:5173`** in your browser.
 
 ---
 
 #### 💡 Alternative: Single-Service Production / Standalone Mode
 
-If you prefer running a single unified server (how it is deployed in production on Render):
+To serve the compiled React UI from the unified Express server (as deployed on Render):
 
 ```bash
-# Build frontend assets and run unified Express server (Port 5000):
 npm run build
 npm start
 ```
@@ -183,7 +193,7 @@ Then visit **`http://localhost:5000`**.
 
 ## 🧪 Testing
 
-To run the full integration and unit test suite:
+Run the full API integration and `SmartSpectraService` unit test suite (including protobuf decoding and per-session isolation checks):
 
 ```bash
 npm test

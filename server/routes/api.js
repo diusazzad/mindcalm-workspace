@@ -1,10 +1,20 @@
 import { Router } from "express";
-import { smartSpectraService } from "../services/smartspectra.js";
+import {
+  getSessionService,
+  smartSpectraService,
+} from "../services/smartspectra.js";
 
 const router = Router();
 
+function resolveSession(req) {
+  const sessionId =
+    req.headers["x-session-id"] || req.query.sessionId || "default";
+  return getSessionService(String(sessionId));
+}
+
 // Health check endpoint
-router.get("/health", (req, res) => {
+router.get("/health", async (req, res) => {
+  await smartSpectraService.ensureReady();
   res.json({
     status: "healthy",
     service: "MindCalm Workspace Telemetry Server",
@@ -15,15 +25,17 @@ router.get("/health", (req, res) => {
 });
 
 // Explicit Camera Consent Endpoint (Presage Contest Requirement)
-router.get("/api/consent", (req, res) => {
+router.get("/api/consent", async (req, res) => {
+  const svc = await resolveSession(req).ensureReady();
   res.json({
-    consent_granted: smartSpectraService.hasConsent,
-    consentGranted: smartSpectraService.hasConsent,
-    mode: smartSpectraService.currentVitals.sdkMode,
+    consent_granted: svc.hasConsent,
+    consentGranted: svc.hasConsent,
+    mode: svc.currentVitals.sdkMode,
+    sdkMode: svc.currentVitals.sdkMode,
   });
 });
 
-router.post("/api/consent", (req, res) => {
+router.post("/api/consent", async (req, res) => {
   const { granted } = req.body;
   if (typeof granted !== "boolean") {
     return res
@@ -31,10 +43,13 @@ router.post("/api/consent", (req, res) => {
       .json({ error: 'Field "granted" must be a boolean.' });
   }
 
-  const result = smartSpectraService.setConsent(granted);
+  const svc = await resolveSession(req).ensureReady();
+  const result = svc.setConsent(granted);
   res.json({
     consent_granted: result,
     consentGranted: result,
+    mode: svc.currentVitals.sdkMode,
+    sdkMode: svc.currentVitals.sdkMode,
     message: result
       ? "Camera consent recorded. Processing is 100% on-device and ephemeral."
       : "Camera consent revoked. Sessions halted.",
@@ -42,25 +57,30 @@ router.post("/api/consent", (req, res) => {
 });
 
 // Current Vitals Snapshot
-router.get("/api/vitals/current", (req, res) => {
-  res.json(smartSpectraService.getCurrentVitals());
+router.get("/api/vitals/current", async (req, res) => {
+  const svc = await resolveSession(req).ensureReady();
+  res.json(svc.getCurrentVitals());
 });
 
 // Waveform History Buffer
 router.get("/api/vitals/history", (req, res) => {
+  const svc = resolveSession(req);
   res.json({
-    samples: smartSpectraService.getWaveformHistory(),
-    totalSamples: smartSpectraService.waveformBuffer.length,
+    samples: svc.getWaveformHistory(),
+    totalSamples: svc.waveformBuffer.length,
+    maxSamples: svc.maxWaveformPoints,
   });
 });
 
 // Session Lifecycle Controls
-router.post("/api/session/start", (req, res) => {
+router.post("/api/session/start", async (req, res) => {
+  const svc = await resolveSession(req).ensureReady();
   try {
-    smartSpectraService.startSession();
+    svc.startSession();
     res.json({
       status: "started",
-      vitals: smartSpectraService.getCurrentVitals(),
+      mode: svc.currentVitals.sdkMode,
+      vitals: svc.getCurrentVitals(),
     });
   } catch (err) {
     res.status(403).json({ error: err.message });
@@ -68,23 +88,27 @@ router.post("/api/session/start", (req, res) => {
 });
 
 router.post("/api/session/stop", (req, res) => {
-  smartSpectraService.stopSession();
+  const svc = resolveSession(req);
+  svc.stopSession();
   res.json({
     status: "stopped",
-    vitals: smartSpectraService.getCurrentVitals(),
+    vitals: svc.getCurrentVitals(),
   });
 });
 
 router.post("/api/session/reset", (req, res) => {
-  smartSpectraService.resetSession();
-  res.json({ status: "reset", vitals: smartSpectraService.getCurrentVitals() });
+  const svc = resolveSession(req);
+  svc.resetSession();
+  res.json({ status: "reset", vitals: svc.getCurrentVitals() });
 });
 
-router.get("/api/session/status", (req, res) => {
+router.get("/api/session/status", async (req, res) => {
+  const svc = await resolveSession(req).ensureReady();
   res.json({
-    isActive: smartSpectraService.isActive,
-    hasConsent: smartSpectraService.hasConsent,
-    mode: smartSpectraService.currentVitals.sdkMode,
+    isActive: svc.isActive,
+    hasConsent: svc.hasConsent,
+    mode: svc.currentVitals.sdkMode,
+    sdkMode: svc.currentVitals.sdkMode,
   });
 });
 
