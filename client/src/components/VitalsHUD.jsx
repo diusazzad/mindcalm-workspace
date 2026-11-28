@@ -7,28 +7,27 @@ import {
   Brain,
   AlertCircle,
   AlertTriangle,
-  UserX,
   CheckCircle,
 } from "lucide-react";
 
 const STATE_CONFIG = {
   CALM_FLOW: {
     label: "Calm Flow",
-    description: "Optimal autonomic balance, relaxed focus",
+    description: "Balanced autonomic pace, relaxed focus",
     badge: "bg-emerald-950/70 text-emerald-300 border-emerald-700/60",
     dot: "bg-emerald-400",
     ring: "border-emerald-500/30",
   },
   DEEP_FOCUS: {
     label: "Deep Focus",
-    description: "Engaged task immersion, stable metrics",
+    description: "Engaged task immersion, steady rhythm",
     badge: "bg-cyan-950/70 text-cyan-300 border-cyan-700/60",
     dot: "bg-cyan-400",
     ring: "border-cyan-500/30",
   },
   COGNITIVE_STRAIN: {
-    label: "Cognitive Strain",
-    description: "High sympathetic arousal, shallow respiration",
+    label: "Focus Fatigue Cue",
+    description: "Elevated arousal or shallow screen-breathing pattern",
     badge: "bg-amber-950/70 text-amber-300 border-amber-700/60",
     dot: "bg-amber-400",
     ring: "border-amber-500/30",
@@ -36,15 +35,15 @@ const STATE_CONFIG = {
   STANDBY: {
     label: "Standby (Camera Off)",
     description:
-      "Click 'Start Telemetry' to initialize camera and optical sensing.",
+      "Click 'Start Session' to run framing calibration and optical sensing.",
     badge: "bg-slate-900 text-slate-400 border-slate-700",
     dot: "bg-slate-500",
     ring: "border-slate-700",
   },
   OUT_OF_CIRCLE: {
-    label: "Camera Alert: Face Not In Circle Guide",
+    label: "Framing Alert: Position Face in Guide",
     description:
-      "Please position and center your face inside the guide circle for accurate optical capture.",
+      "Center your face and shoulders inside the guide overlay for optical capture.",
     badge: "bg-rose-950/80 text-rose-300 border-rose-500 animate-pulse",
     dot: "bg-rose-400",
     ring: "border-rose-500/40",
@@ -55,8 +54,10 @@ export default function VitalsHUD({
   vitals,
   isSessionActive,
   isHumanDetected = false,
+  sdkMode = "simulation_fallback",
 }) {
   const isMeasuring = isSessionActive && isHumanDetected;
+  const isLiveSdk = sdkMode === "native_smartspectra_v3.4";
 
   const pulseBpm = isMeasuring ? (vitals?.pulse_bpm ?? 0) : 0;
   const pulseConfidence = isMeasuring ? (vitals?.pulse_confidence ?? 0) : 0;
@@ -65,7 +66,6 @@ export default function VitalsHUD({
   const blinkRate = isMeasuring ? (vitals?.blink_rate_cpm ?? 0) : 0;
   const blinksTotal = vitals?.blinks_total ?? vitals?.blinksTotal ?? 0;
 
-  // Determine Cognitive Banner State
   let cognitiveStateKey = "STANDBY";
   if (isSessionActive) {
     if (!isHumanDetected) {
@@ -78,10 +78,11 @@ export default function VitalsHUD({
   const stateMeta = STATE_CONFIG[cognitiveStateKey] || STATE_CONFIG.STANDBY;
   const isEyeStrainRisk = isMeasuring && (vitals?.eye_strain_risk ?? false);
   const isFaceTalking = isMeasuring && (vitals?.is_talking ?? false);
+  const isPulseStable = isMeasuring && pulseConfidence >= 40;
 
   return (
     <div className="space-y-4">
-      {/* Top Banner: Cognitive State & Alignment Alert */}
+      {/* Top Banner: Wellness State & Alignment Alert */}
       <div
         className={`p-4 rounded-2xl border bg-slate-900/90 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-300 ${
           isSessionActive && !isHumanDetected
@@ -108,7 +109,7 @@ export default function VitalsHUD({
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-xs uppercase font-mono tracking-wider text-slate-400">
-                Cognitive State:
+                Ergonomic State:
               </span>
               <span
                 className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${stateMeta.badge} flex items-center space-x-1.5`}
@@ -127,7 +128,7 @@ export default function VitalsHUD({
           </div>
         </div>
 
-        {/* Alignment Indicator / Talking Indicator / Eye Strain Badge */}
+        {/* Alignment Indicator / Talking Indicator / Low Blink Cue */}
         <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
           {isSessionActive && !isHumanDetected ? (
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-rose-950/70 border border-rose-500 text-rose-300 text-xs font-bold animate-pulse shadow-lg shadow-rose-900/30">
@@ -137,12 +138,12 @@ export default function VitalsHUD({
           ) : isFaceTalking ? (
             <div className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-indigo-950/60 border border-indigo-700/50 text-indigo-300 text-xs">
               <span className="h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
-              <span>Vocal Motion (Vitals Gated)</span>
+              <span>Vocal Motion (Breathing Gated)</span>
             </div>
           ) : isEyeStrainRisk ? (
             <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 border border-amber-600/60 text-amber-300 text-xs font-medium animate-pulse">
               <AlertCircle className="h-4 w-4 text-amber-400" />
-              <span>Low Blink Rate (Computer Vision Syndrome Risk)</span>
+              <span>Low Blink Rate (&lt;12/min — 20-20-20 Break Cue)</span>
             </div>
           ) : (
             <div className="flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-slate-800/60 border border-slate-700 text-slate-300 text-xs">
@@ -157,7 +158,7 @@ export default function VitalsHUD({
         </div>
       </div>
 
-      {/* 4 Core Physiological Telemetry Cards */}
+      {/* 4 Core Ergonomic Biofeedback Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Pulse BPM */}
         <div
@@ -180,14 +181,12 @@ export default function VitalsHUD({
               </span>
             </div>
 
-            {/* Standard Reference Range */}
             <div className="text-[10px] font-mono text-cyan-300/80 mb-1">
-              Standard Baseline: 60 – 100 BPM
+              Typical Resting Range: 60 – 100 BPM
             </div>
 
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
-              (Heart rate beats per minute measured via camera rPPG optical
-              flow)
+              (Non-medical optical pulse estimate via camera rPPG flow)
             </p>
 
             <div className="flex items-baseline space-x-2">
@@ -199,20 +198,26 @@ export default function VitalsHUD({
           </div>
 
           <div className="mt-3 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800">
-            <span>Presage PPG Optical</span>
+            <span>
+              {isLiveSdk ? "Presage SDK PPG" : "Browser Optical rPPG"}
+            </span>
             <span
               className={
                 isSessionActive && !isHumanDetected
                   ? "text-rose-400 font-bold"
                   : isMeasuring
-                    ? "text-emerald-400 font-medium"
+                    ? isPulseStable
+                      ? "text-emerald-400 font-medium"
+                      : "text-amber-400 font-medium"
                     : "text-slate-500 font-medium"
               }
             >
               {isSessionActive && !isHumanDetected
                 ? "Align in Circle"
                 : isMeasuring
-                  ? "Stable"
+                  ? isPulseStable
+                    ? "Stable"
+                    : "Warming up"
                   : "Standby"}
             </span>
           </div>
@@ -237,14 +242,13 @@ export default function VitalsHUD({
               </span>
             </div>
 
-            {/* Standard Reference Range */}
             <div className="text-[10px] font-mono text-cyan-300/80 mb-1">
-              Standard Baseline: 35.0 – 65.0 ms
+              Reference Baseline: 35.0 – 65.0 ms
             </div>
 
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
-              (Autonomic tone & stress index — higher ms indicates
-              parasympathetic calm)
+              (Recovery & autonomic balance cue — higher ms reflects calmer
+              tone)
             </p>
 
             <div className="flex items-baseline space-x-2">
@@ -256,7 +260,7 @@ export default function VitalsHUD({
           </div>
 
           <div className="mt-3 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800">
-            <span>Autonomic Tone</span>
+            <span>{isLiveSdk ? "Presage HRV" : "Simulated Sync"}</span>
             <span
               className={
                 isSessionActive && !isHumanDetected
@@ -294,14 +298,13 @@ export default function VitalsHUD({
               </span>
             </div>
 
-            {/* Standard Reference Range */}
             <div className="text-[10px] font-mono text-cyan-300/80 mb-1">
-              Standard Baseline: 12.0 – 18.0 RPM
+              Relaxed Baseline: 12.0 – 18.0 RPM
             </div>
 
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
-              (Thoracic respiratory frequency — normal baseline is 12 to 18
-              breaths/min)
+              (Thoracic breathing pace estimate — detects shallow screen-apnea
+              habits)
             </p>
 
             <div className="flex items-baseline space-x-2">
@@ -355,14 +358,12 @@ export default function VitalsHUD({
               </span>
             </div>
 
-            {/* Standard Reference Range */}
             <div className="text-[10px] font-mono text-cyan-300/80 mb-1">
-              Standard Baseline: 15 – 20 blinks/min
+              Ergonomic Target: 15 – 20 blinks/min
             </div>
 
             <p className="text-[11px] text-slate-400 mb-2 font-normal leading-tight">
-              (Eye hydration rate — values under 12 indicate visual fatigue &
-              dry eye risk)
+              (Screen-break cue — rates below 12 suggest visual stare fatigue)
             </p>
 
             <div className="flex items-baseline space-x-2">
@@ -394,7 +395,7 @@ export default function VitalsHUD({
                 ? "Align in Circle"
                 : isMeasuring
                   ? isEyeStrainRisk
-                    ? "Fatigue Detected"
+                    ? "Break Suggested"
                     : "Optimal"
                   : "Standby"}
             </span>

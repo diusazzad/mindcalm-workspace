@@ -1,11 +1,19 @@
-import React from 'react';
-import { Activity, ShieldCheck, Wifi, WifiOff, Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import React from "react";
+import {
+  Activity,
+  ShieldCheck,
+  Volume2,
+  VolumeX,
+  RotateCcw,
+} from "lucide-react";
 
 export default function Navbar({
   isConnected,
   isSessionActive,
   sessionDuration,
   isConsentGranted,
+  sdkMode = "simulation_fallback",
+  isHumanDetected = false,
   onOpenConsent,
   onResetSession,
   isMuted,
@@ -14,8 +22,10 @@ export default function Navbar({
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
+
+  const isLiveSdk = sdkMode === "native_smartspectra_v3.4";
 
   return (
     <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
@@ -27,12 +37,32 @@ export default function Navbar({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold text-white tracking-tight">MindCalm</span>
+              <span className="text-lg font-bold text-white tracking-tight">
+                MindCalm
+              </span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-medium">
                 Workspace
               </span>
+              <span
+                className={`hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full border font-mono font-semibold ${
+                  isLiveSdk
+                    ? "bg-emerald-950/70 text-emerald-300 border-emerald-700/70"
+                    : "bg-amber-950/70 text-amber-300 border-amber-700/70"
+                }`}
+                title="Indicates whether telemetry originates from Presage native C++ SDK or Browser Optical / Simulation Fallback"
+              >
+                {isLiveSdk
+                  ? "LIVE SDK"
+                  : isSessionActive && isHumanDetected
+                    ? "OPTICAL + DEMO"
+                    : "DEMO / SIMULATED"}
+              </span>
             </div>
-            <p className="text-xs text-slate-400">Powered by Presage SmartSpectra v3.4 SDK</p>
+            <p className="text-xs text-slate-400">
+              {isLiveSdk
+                ? "Presage SmartSpectra v3.4 SDK (Live Stream)"
+                : "Non-Medical Ergonomic Wellness • Presage SmartSpectra v3.4 Architecture"}
+            </p>
           </div>
         </div>
 
@@ -41,18 +71,21 @@ export default function Navbar({
           <div className="flex items-center space-x-2">
             <span
               className={`h-2.5 w-2.5 rounded-full ${
-                isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+                isConnected ? "bg-emerald-400 animate-pulse" : "bg-rose-500"
               }`}
             />
             <span className="text-xs font-medium text-slate-300">
-              {isConnected ? 'Telemetry 30Hz' : 'Disconnected'}
+              {isConnected ? "Telemetry 30Hz" : "Disconnected"}
             </span>
           </div>
 
           <div className="h-3 w-px bg-slate-800" />
 
           <div className="text-xs text-slate-400 font-mono">
-            Session: <span className="text-slate-200 font-semibold">{formatTime(sessionDuration)}</span>
+            Session:{" "}
+            <span className="text-slate-200 font-semibold">
+              {formatTime(sessionDuration)}
+            </span>
           </div>
         </div>
 
@@ -63,14 +96,16 @@ export default function Navbar({
             onClick={onOpenConsent}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               isConsentGranted
-                ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/60 hover:bg-emerald-900/40'
-                : 'bg-amber-950/50 text-amber-400 border border-amber-800/60 hover:bg-amber-900/40'
+                ? "bg-emerald-950/50 text-emerald-400 border border-emerald-800/60 hover:bg-emerald-900/40"
+                : "bg-amber-950/50 text-amber-400 border border-amber-800/60 hover:bg-amber-900/40"
             }`}
             title="View Camera Privacy & Consent Architecture"
           >
             <ShieldCheck className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {isConsentGranted ? 'Consent Verified (Zero-Storage)' : 'Review Consent'}
+              {isConsentGranted
+                ? "Consent Verified (Zero-Storage)"
+                : "Review Consent"}
             </span>
           </button>
 
@@ -79,12 +114,18 @@ export default function Navbar({
             onClick={onToggleMute}
             className={`p-2 rounded-lg border text-xs transition-all ${
               isMuted
-                ? 'border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200'
-                : 'border-cyan-800 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40'
+                ? "border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200"
+                : "border-cyan-800 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40"
             }`}
-            title={isMuted ? 'Unmute Ambient Soundscape' : 'Mute Ambient Soundscape'}
+            title={
+              isMuted ? "Unmute Ambient Soundscape" : "Mute Ambient Soundscape"
+            }
           >
-            {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            {isMuted ? (
+              <VolumeX className="h-4 w-4" />
+            ) : (
+              <Volume2 className="h-4 w-4" />
+            )}
           </button>
 
           {/* Reset Session */}

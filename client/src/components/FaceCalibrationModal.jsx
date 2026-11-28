@@ -389,11 +389,10 @@ export default function FaceCalibrationModal({
             </div>
             <div>
               <h3 className="font-bold text-sm sm:text-base text-white">
-                Biometric Head & Shoulder Calibration (Full Scan)
+                Head & Shoulder Framing Calibration (5s Step)
               </h3>
               <p className="text-xs text-slate-400">
-                Maps head ratio, eye plane, nose airflow apex & shoulder slope
-                (5 Seconds)
+                Maps framing geometry before the 15–30s biometric signal warm-up
               </p>
             </div>
           </div>
